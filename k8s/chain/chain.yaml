@@ -1,0 +1,204 @@
+# Rantai tiga tier dari satu image: tier-a -> tier-b -> tier-c.
+#   curl http://tier-a/api/chain?depth=2   -> trace sama di ketiga hop
+# Skenario:
+#   - Matikan tier-c  : kubectl -n playground scale deploy/tier-c --replicas=0
+#       * /api/chain dari tier-a membalas 502 (kegagalan berantai)
+#       * readiness tier-b lalu tier-a gagal (DEPENDENCY_URL = /api/readyz tier di bawahnya), pod tidak di-restart
+#   - Pulihkan        : kubectl -n playground scale deploy/tier-c --replicas=1
+#   - Lambatkan tier-c: kubectl -n playground set env deploy/tier-c LATENCY_MS=5000   (CHAIN_TIMEOUT_MS=3000 -> 504/502)
+# Prasyarat: k8s/app.yaml sudah di-apply (namespace playground). Ganti image sesuai registry kamu.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tier-a
+  namespace: playground
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: tier-a }
+  template:
+    metadata:
+      labels: { app: tier-a }
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: app
+          image: registry.example.com/devops-playground:1.0.0
+          ports:
+            - { name: http, containerPort: 3000 }
+          env:
+            - { name: APP_VERSION, value: "tier-a" }
+            - { name: HOSTNAME, value: "0.0.0.0" }
+            - { name: NEXT_MANUAL_SIG_HANDLE, value: "true" }
+            - { name: UPSTREAM_URL, value: "http://tier-b.playground.svc.cluster.local" }
+            - { name: DEPENDENCY_URL, value: "http://tier-b.playground.svc.cluster.local/api/readyz" }
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits: { cpu: 300m, memory: 192Mi }
+          startupProbe:
+            httpGet: { path: /api/startupz, port: http }
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: { path: /api/healthz, port: http }
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /api/readyz, port: http }
+            periodSeconds: 5
+          volumeMounts:
+            - { name: next-cache, mountPath: /app/.next/cache }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: next-cache, emptyDir: {} }
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tier-a
+  namespace: playground
+spec:
+  selector: { app: tier-a }
+  ports:
+    - { name: http, port: 80, targetPort: http }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tier-b
+  namespace: playground
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: tier-b }
+  template:
+    metadata:
+      labels: { app: tier-b }
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: app
+          image: registry.example.com/devops-playground:1.0.0
+          ports:
+            - { name: http, containerPort: 3000 }
+          env:
+            - { name: APP_VERSION, value: "tier-b" }
+            - { name: HOSTNAME, value: "0.0.0.0" }
+            - { name: NEXT_MANUAL_SIG_HANDLE, value: "true" }
+            - { name: UPSTREAM_URL, value: "http://tier-c.playground.svc.cluster.local" }
+            - { name: DEPENDENCY_URL, value: "http://tier-c.playground.svc.cluster.local/api/readyz" }
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits: { cpu: 300m, memory: 192Mi }
+          startupProbe:
+            httpGet: { path: /api/startupz, port: http }
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: { path: /api/healthz, port: http }
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /api/readyz, port: http }
+            periodSeconds: 5
+          volumeMounts:
+            - { name: next-cache, mountPath: /app/.next/cache }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: next-cache, emptyDir: {} }
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tier-b
+  namespace: playground
+spec:
+  selector: { app: tier-b }
+  ports:
+    - { name: http, port: 80, targetPort: http }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tier-c
+  namespace: playground
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: tier-c }
+  template:
+    metadata:
+      labels: { app: tier-c }
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: app
+          image: registry.example.com/devops-playground:1.0.0
+          ports:
+            - { name: http, containerPort: 3000 }
+          env:
+            - { name: APP_VERSION, value: "tier-c" }
+            - { name: HOSTNAME, value: "0.0.0.0" }
+            - { name: NEXT_MANUAL_SIG_HANDLE, value: "true" }
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits: { cpu: 300m, memory: 192Mi }
+          startupProbe:
+            httpGet: { path: /api/startupz, port: http }
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: { path: /api/healthz, port: http }
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /api/readyz, port: http }
+            periodSeconds: 5
+          volumeMounts:
+            - { name: next-cache, mountPath: /app/.next/cache }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: next-cache, emptyDir: {} }
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tier-c
+  namespace: playground
+spec:
+  selector: { app: tier-c }
+  ports:
+    - { name: http, port: 80, targetPort: http }

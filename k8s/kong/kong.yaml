@@ -1,0 +1,155 @@
+# Kong Ingress Controller (ingressClassName: kong). Satu Service, dua route berbeda tampilan.
+# Prasyarat: KIC terpasang, dan k8s/app.yaml sudah di-apply.
+#   /blue  -> halaman biru, publik, dengan rate-limit
+#   /green -> halaman hijau, wajib API key (key-auth)
+#   /gw/*  -> strip-path, tes rewrite (app menerima path tanpa /gw)
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: rate-limit-5pm
+  namespace: playground
+plugin: rate-limiting
+config:
+  minute: 5
+  policy: local
+---
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: key-auth
+  namespace: playground
+plugin: key-auth
+config:
+  key_names: [apikey]
+  hide_credentials: true
+---
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: add-gateway-header
+  namespace: playground
+plugin: request-transformer
+config:
+  add:
+    headers:
+      - "X-Gateway:kong"
+---
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: correlation-id
+  namespace: playground
+plugin: correlation-id
+config:
+  header_name: X-Correlation-Id
+  generator: uuid
+---
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: cors
+  namespace: playground
+plugin: cors
+config:
+  origins: ["https://example.com"]
+  methods: [GET, POST, OPTIONS]
+---
+# Ganti nilai key sebelum dipakai di luar lab.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: demo-user-apikey
+  namespace: playground
+  labels:
+    konghq.com/credential: key-auth
+stringData:
+  key: replace-me-with-a-random-key
+---
+apiVersion: configuration.konghq.com/v1
+kind: KongConsumer
+metadata:
+  name: demo-user
+  namespace: playground
+  annotations:
+    kubernetes.io/ingress.class: kong
+username: demo-user
+credentials:
+  - demo-user-apikey
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: playground-blue
+  namespace: playground
+  annotations:
+    konghq.com/strip-path: "false"
+    konghq.com/plugins: rate-limit-5pm,add-gateway-header,correlation-id
+spec:
+  ingressClassName: kong
+  rules:
+    - host: gateway.local
+      http:
+        paths:
+          - path: /blue
+            pathType: Prefix
+            backend:
+              service: { name: playground, port: { name: http } }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: playground-green
+  namespace: playground
+  annotations:
+    konghq.com/strip-path: "false"
+    konghq.com/plugins: key-auth,add-gateway-header,correlation-id,cors
+spec:
+  ingressClassName: kong
+  rules:
+    - host: gateway.local
+      http:
+        paths:
+          - path: /green
+            pathType: Prefix
+            backend:
+              service: { name: playground, port: { name: http } }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: playground-gw-strip
+  namespace: playground
+  annotations:
+    konghq.com/strip-path: "true"
+    konghq.com/plugins: add-gateway-header
+spec:
+  ingressClassName: kong
+  rules:
+    - host: gateway.local
+      http:
+        paths:
+          - path: /gw
+            pathType: Prefix
+            backend:
+              service: { name: playground, port: { name: http } }
+---
+# Uji identitas: Kong memverifikasi key-auth lalu meneruskan X-Consumer-*; /api/secure/whoami menampilkannya.
+#   curl -H 'apikey: <key>' http://<kong>/api/secure/whoami?require=1   (tanpa key -> 401 dari Kong)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: playground-secure
+  namespace: playground
+  annotations:
+    konghq.com/strip-path: "false"
+    konghq.com/plugins: key-auth,add-gateway-header,correlation-id
+spec:
+  ingressClassName: kong
+  rules:
+    - host: gateway.local
+      http:
+        paths:
+          - path: /api/secure/whoami
+            pathType: Prefix
+            backend:
+              service: { name: playground, port: { name: http } }

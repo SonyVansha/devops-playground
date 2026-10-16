@@ -1,0 +1,211 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: playground
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: playground-config
+  namespace: playground
+data:
+  message: "hello from configmap v1"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: playground
+  namespace: playground
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: playground
+  namespace: playground
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: playground
+  template:
+    metadata:
+      labels:
+        app: playground
+    spec:
+      serviceAccountName: playground
+      automountServiceAccountToken: false
+      # Harus > preStop sleep + DRAIN_SECONDS agar graceful shutdown selesai sebelum SIGKILL.
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: app
+          # Ganti dengan image kamu; hindari tag :latest, lebih baik pin digest.
+          image: registry.example.com/devops-playground:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: APP_VERSION
+              value: "1.0.0"
+            - name: ENABLE_CHAOS
+              value: "false" # set "true" hanya di namespace tes
+            # Wajib: kubelet menimpa HOSTNAME dengan nama pod, padahal Next memakainya sebagai alamat bind.
+            - name: HOSTNAME
+              value: "0.0.0.0"
+            - name: NEXT_MANUAL_SIG_HANDLE
+              value: "true" # app menangani SIGTERM sendiri (drain)
+            - name: DRAIN_SECONDS
+              value: "10"
+            - name: CONNECT_ALLOWLIST # host yang boleh dites lewat /api/connect
+              value: "kubernetes.default.svc,playground.playground.svc.cluster.local"
+            - name: CONFIG_DIR
+              value: /etc/playground
+            # Buat dulu: kubectl -n playground create secret generic playground-chaos --from-literal=token=$(openssl rand -hex 16)
+            - name: CHAOS_TOKEN
+              valueFrom:
+                secretKeyRef: { name: playground-chaos, key: token, optional: true }
+            # Opsional (isi lewat Secret): verifikasi HS256 di /api/secure/jwt dan basic auth di /api/secure/basic.
+            #   kubectl -n playground create secret generic playground-auth --from-literal=jwt-secret=... --from-literal=basic-user=... --from-literal=basic-password=...
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef: { name: playground-auth, key: jwt-secret, optional: true }
+            - name: BASIC_USER
+              valueFrom:
+                secretKeyRef: { name: playground-auth, key: basic-user, optional: true }
+            - name: BASIC_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: playground-auth, key: basic-password, optional: true }
+            # Opsional: rantai service dan readiness berbasis dependency (lihat k8s/chain/chain.yaml).
+            #   UPSTREAM_URL=http://tier-b.playground.svc.cluster.local   DEPENDENCY_URL=http://tier-b.playground.svc.cluster.local/api/readyz
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: POD_NAMESPACE
+              valueFrom: { fieldRef: { fieldPath: metadata.namespace } }
+            - name: NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+            - name: POD_IP
+              valueFrom: { fieldRef: { fieldPath: status.podIP } }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          lifecycle:
+            preStop:
+              sleep: { seconds: 5 } # beri waktu endpoints/gateway melepas pod (K8s >= 1.30)
+          startupProbe:
+            httpGet: { path: /api/startupz, port: http }
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: { path: /api/healthz, port: http }
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /api/readyz, port: http }
+            periodSeconds: 5
+          volumeMounts:
+            - name: next-cache
+              mountPath: /app/.next/cache
+            - name: tmp
+              mountPath: /tmp
+            - name: playground-config
+              mountPath: /etc/playground
+              readOnly: true
+      volumes:
+        - name: playground-config
+          configMap:
+            name: playground-config
+            optional: true
+        - name: next-cache
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: playground
+  namespace: playground
+spec:
+  selector:
+    app: playground
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: playground
+  namespace: playground
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: playground.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: playground
+                port:
+                  name: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: playground
+  namespace: playground
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: playground
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: playground
+  namespace: playground
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: playground
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 70 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: playground
+  namespace: playground
+spec:
+  podSelector:
+    matchLabels:
+      app: playground
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - port: 3000

@@ -1,0 +1,120 @@
+# Canary dengan Argo Rollouts. Prasyarat: controller Argo Rollouts terpasang dan k8s/app.yaml sudah di-apply.
+# Rollout memakai pod template dari Deployment "playground" (workloadRef), jadi versi baru dirilis dengan
+# mengubah Deployment, mis. `kubectl -n playground set env deploy/playground APP_VERSION=v2`.
+# Tanpa traffic router, bobot canary mengikuti jumlah pod (20% dari 5 replika = 1 pod). Analisis memanggil
+# Service canary langsung, jadi hanya pod canary yang dinilai.
+apiVersion: v1
+kind: Service
+metadata:
+  name: playground-stable
+  namespace: playground
+spec:
+  selector:
+    app: playground
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: playground-canary
+  namespace: playground
+spec:
+  selector:
+    app: playground
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: hello-success-rate
+  namespace: playground
+spec:
+  args:
+    - name: service
+    - name: requests
+      value: "40"
+    - name: min-success # persen respons 200 minimum agar canary dianggap sehat
+      value: "95"
+  metrics:
+    - name: hello-success-rate
+      count: 1
+      failureLimit: 0
+      provider:
+        job:
+          spec:
+            backoffLimit: 0
+            ttlSecondsAfterFinished: 300
+            template:
+              spec:
+                restartPolicy: Never
+                automountServiceAccountToken: false
+                securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 100
+                  runAsGroup: 101
+                  seccompProfile:
+                    type: RuntimeDefault
+                containers:
+                  - name: probe
+                    # Pin ke digest sebelum dipakai di luar lab.
+                    image: curlimages/curl:8.11.1
+                    command: ["sh", "-c"]
+                    args:
+                      - |
+                        ok=0; i=0; n={{args.requests}}
+                        while [ "$i" -lt "$n" ]; do
+                          code=$(curl -s -o /dev/null -m 5 -w '%{http_code}' "http://{{args.service}}/api/hello")
+                          [ "$code" = "200" ] && ok=$((ok + 1))
+                          i=$((i + 1))
+                        done
+                        rate=$((ok * 100 / n))
+                        echo "success=${rate}% (${ok}/${n}) min={{args.min-success}}%"
+                        [ "$rate" -ge "{{args.min-success}}" ]
+                    securityContext:
+                      allowPrivilegeEscalation: false
+                      readOnlyRootFilesystem: true
+                      capabilities:
+                        drop: ["ALL"]
+                    resources:
+                      requests: { cpu: 50m, memory: 32Mi }
+                      limits: { cpu: 200m, memory: 64Mi }
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: playground
+  namespace: playground
+spec:
+  replicas: 5
+  revisionHistoryLimit: 3
+  workloadRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: playground
+    scaleDown: progressively
+  strategy:
+    canary:
+      stableService: playground-stable
+      canaryService: playground-canary
+      steps:
+        - setWeight: 20
+        - pause: { duration: 10s }
+        - analysis:
+            templates:
+              - templateName: hello-success-rate
+            args:
+              - name: service
+                value: playground-canary.playground.svc.cluster.local
+        - setWeight: 60
+        - analysis:
+            templates:
+              - templateName: hello-success-rate
+            args:
+              - name: service
+                value: playground-canary.playground.svc.cluster.local

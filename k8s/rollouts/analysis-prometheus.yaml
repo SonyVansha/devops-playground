@@ -1,0 +1,25 @@
+# ALTERNATIF (belum diuji): analisis berbasis Prometheus memakai metrics app (/api/metrics).
+# Syarat: Prometheus men-scrape pod dan memberi label `pod` pada series (sesuaikan address dan label dengan setup kamu).
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: hello-error-rate-prom
+  namespace: playground
+spec:
+  args:
+    - name: canary-hash
+      valueFrom:
+        podTemplateHashValue: Latest
+  metrics:
+    - name: error-rate
+      interval: 30s
+      count: 4
+      failureLimit: 1
+      successCondition: result[0] < 0.05 || isNaN(result[0])
+      provider:
+        prometheus:
+          address: http://prometheus-server.monitoring.svc.cluster.local
+          query: |
+            sum(rate(app_http_requests_total{route="hello",status=~"5..",pod=~"playground-{{args.canary-hash}}-.*"}[1m]))
+            /
+            sum(rate(app_http_requests_total{route="hello",pod=~"playground-{{args.canary-hash}}-.*"}[1m]))

@@ -1,0 +1,10 @@
+node_modules
+.next
+.git
+k8s
+test
+*.md
+.env*
+loadtest
+scripts
+.github
