@@ -10,15 +10,26 @@ export default function Toc({ headings }: Readonly<{ headings: Heading[] }>) {
   useEffect(() => {
     const elements = headings.map((h) => document.getElementById(h.id)).filter((el): el is HTMLElement => el !== null);
     if (elements.length === 0 || typeof IntersectionObserver === 'undefined') return undefined;
+    // Di dasar halaman, heading terakhir sering tidak bisa mencapai area deteksi: anggap bagian terakhir yang dibaca.
+    const lastId = headings[headings.length - 1].id;
+    const atBottom = () => window.scrollY > 0 && window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4;
     const observer = new IntersectionObserver(
       (entries) => {
+        if (atBottom()) return;
         const visible = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
         if (visible.length > 0) setActive(visible[0].target.id);
       },
       { rootMargin: '-10% 0px -70% 0px' },
     );
     elements.forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
+    const onScroll = () => {
+      if (atBottom()) setActive(lastId);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('scroll', onScroll);
+    };
   }, [headings]);
 
   if (headings.length < 2) return null;

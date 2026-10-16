@@ -59,6 +59,7 @@ export const doc: Doc = {
         ['`CHAIN_TIMEOUT_MS`', '`3000` (100–30000)', 'timeout per hop'],
         ['`CONNECT_ALLOWLIST`', '(kosong = tolak semua)', 'host yang boleh dites `/api/connect`'],
         ['`CONFIG_DIR`', '`/etc/playground`', 'direktori yang dilaporkan `/api/config`'],
+        ['`IDENTITY_HEADERS`', '`x-consumer-username,x-client-id,x-user,x-forwarded-user`', 'nama header identitas dari gateway yang dipantau `/api/secure/whoami` (urutan = prioritas)'],
         ['`JWT_SECRET`', '(kosong)', 'verifikasi HS256 di `/api/secure/jwt`'],
         ['`BASIC_USER`, `BASIC_PASSWORD`', '(kosong)', 'basic auth di `/api/secure/basic`'],
         [

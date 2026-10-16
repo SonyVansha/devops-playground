@@ -23,8 +23,8 @@ export const doc: Doc = {
     {
       t: 'check',
       title: 'Anonim ditolak, consumer terbaca',
-      command: 'curl -s -o /dev/null -w "anonim: %{http_code}\\n" "{{BASE}}/api/secure/whoami?require=1"\n# lewat Kong dengan key-auth:\ncurl -s -H "Host: gateway.local" -H "apikey: <key>" "$PROXY/api/secure/whoami?require=1"',
-      expect: 'langsung ke app: `anonim: 401`. Lewat Kong: `"authenticated":true,"via":"gateway"` dan `consumer.username` terisi. Nilai `Authorization` tidak pernah dikembalikan, hanya skema-nya (`Bearer`/`Basic`).',
+      command: 'curl -s -o /dev/null -w "anonim: %{http_code}\\n" "{{BASE}}/api/secure/whoami?require=1"\n# lewat gateway (Kong key-auth atau Envoy Gateway apiKeyAuth):\ncurl -s -H "Host: gateway.local" -H "apikey: <key>" "$PROXY/api/secure/whoami?require=1"',
+      expect: 'langsung ke app: `anonim: 401`. Lewat gateway: `"authenticated":true,"via":"gateway"`, `identityHeader` menyebut header yang dipakai (`x-consumer-username` pada Kong, `x-client-id` pada Envoy Gateway), dan `consumer.username` terisi. Nama header lain bisa dipantau lewat env `IDENTITY_HEADERS`. Nilai `Authorization` tidak pernah dikembalikan, hanya skema-nya (`Bearer`/`Basic`).',
     },
     {
       t: 'note',

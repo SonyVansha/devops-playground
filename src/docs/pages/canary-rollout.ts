@@ -25,7 +25,7 @@ export const doc: Doc = {
     {
       t: 'note',
       kind: 'info',
-      text: 'Tanpa traffic router (Kong, Istio, NGINX), bobot canary mengikuti **jumlah pod** (20% dari 5 replika = 1 pod). Analisis tetap akurat karena menembak Service canary langsung.',
+      text: 'Tanpa traffic router (Kong, Envoy Gateway, Istio, NGINX), bobot canary mengikuti **jumlah pod** (20% dari 5 replika = 1 pod). Analisis tetap akurat karena menembak Service canary langsung.',
     },
     { t: 'h', text: 'Skenario A: canary sehat → dipromosikan' },
     { t: 'code', code: 'kubectl -n playground set env deploy/playground APP_VERSION=v2' },

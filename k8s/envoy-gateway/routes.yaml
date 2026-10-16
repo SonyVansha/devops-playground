@@ -1,0 +1,292 @@
+# Skenario Envoy Gateway untuk satu Service (`playground`, port 80). Prasyarat: k8s/app.yaml sudah di-apply.
+# Semua route memakai host `gateway.local`. Ubah `parentRefs.name` bila Gateway-mu bernama lain.
+#
+#   /blue                      : rate limit 5/menit + header X-Gateway
+#   /green                     : API key (header apikey) + CORS
+#   /gw/*                      : prefix /gw dibuang sebelum sampai ke app
+#   /api/secure/whoami         : API key, identitas diteruskan lewat header x-client-id
+#   /api/flaky                 : retry otomatis pada 5xx
+#   /api/delay                 : timeout route 35 dtk (bawaan Envoy 15 dtk)
+#   /api/sse                   : timeout 0s agar stream panjang tidak terpotong
+#   /api/cache                 : kompresi gzip di gateway
+#   /api/cookie                : sticky session berbasis cookie (butuh >= 2 replika untuk terlihat)
+#
+# Catatan versi: apiKeyAuth dan rateLimit.local membutuhkan Envoy Gateway yang cukup baru (>= 1.4). Cek `kubectl explain
+# securitypolicy.spec` di cluster-mu; jalankan `kubectl apply --dry-run=server -f routes.yaml` sebelum dipakai.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: demo-apikeys
+  namespace: playground
+type: Opaque
+stringData:
+  # Satu entri = satu klien: nama kunci = client ID, nilai = API key. Ganti nilainya sebelum dipakai di luar lab.
+  demo-user: replace-me-with-a-random-key
+---
+# ---------- /blue ----------
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: playground-blue
+  namespace: playground
+spec:
+  parentRefs:
+    - name: playground-gateway
+  hostnames: ["gateway.local"]
+  rules:
+    - matches:
+        - path: { type: PathPrefix, value: /blue }
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            add:
+              - { name: X-Gateway, value: envoy }
+      backendRefs:
+        - { name: playground, port: 80 }
+---
+# Local rate limit dihitung per replika Envoy (bukan global per klien). Untuk batas global, pakai rateLimit.type=Global (butuh Redis).
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: playground-blue-ratelimit
+  namespace: playground
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: playground-blue
+  rateLimit:
+    type: Local
+    local:
+      rules:
+        - limit:
+            requests: 5
+            unit: Minute
+---
+# ---------- /green ----------
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: playground-green
+  namespace: playground
+spec:
+  parentRefs:
+    - name: playground-gateway
+  hostnames: ["gateway.local"]
+  rules:
+    - matches:
+        - path: { type: PathPrefix, value: /green }
+      backendRefs:
+        - { name: playground, port: 80 }
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: playground-green-security
+  namespace: playground
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: playground-green
+  apiKeyAuth:
+    credentialRefs:
+      - { group: "", kind: Secret, name: demo-apikeys }
+    extractFrom:
+      - headers: ["apikey"]
+    forwardClientIDHeader: x-client-id
+  cors:
+    allowOrigins:
+      - "https://example.com"
+    allowMethods: ["GET", "POST", "OPTIONS"]
+    allowHeaders: ["apikey", "content-type"]
+---
+# ---------- /gw : prefix dibuang ----------
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: playground-gw-strip
+  namespace: playground
+spec:
+  parentRefs:
+    - name: playground-gateway
+  hostnames: ["gateway.local"]
+  rules:
+    - matches:
+        - path: { type: PathPrefix, value: /gw }
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - { name: playground, port: 80 }
+---
+# ---------- /api/secure/whoami : identitas dari API key ----------
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: playground-whoami
+  namespace: playground
+spec:
+  parentRefs:
+    - name: playground-gateway
+  hostnames: ["gateway.local"]
+  rules:
+    - matches:
+        - path: { type: PathPrefix, value: /api/secure/whoami }
+      backendRefs:
+        - { name: playground, port: 80 }
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: playground-whoami-security
+  namespace: playground
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: playground-whoami
+  apiKeyAuth:
+    credentialRefs:
+      - { group: "", kind: Secret, name: demo-apikeys }
+    extractFrom:
+      - headers: ["apikey"]
+    forwardClientIDHeader: x-client-id
+---
+# ---------- /api/flaky : retry ----------
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: playground-flaky
+  namespace: playground
+spec:
+  parentRefs:
+    - name: playground-gateway
+  hostnames: ["gateway.local"]
+  rules:
+    - matches:
+        - path: { type: PathPrefix, value: /api/flaky }
+      backendRefs:
+        - { name: playground, port: 80 }
+---
+# Dengan rate=30 dan 3 retry, peluang gagal turun dari ~30% menjadi ~0,8% (0,3^4).
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: playground-flaky-retry
+  namespace: playground
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: playground-flaky
+  retry:
+    numRetries: 3
+    retryOn:
+      triggers: ["5xx"]
+    perRetry:
+      backOff:
+        baseInterval: 50ms
+        maxInterval: 500ms
+---
+# ---------- /api/delay : timeout route diperpanjang ----------
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: playground-slow
+  namespace: playground
+spec:
+  parentRefs:
+    - name: playground-gateway
+  hostnames: ["gateway.local"]
+  rules:
+    - matches:
+        - path: { type: PathPrefix, value: /api/delay }
+      timeouts:
+        request: 35s
+      backendRefs:
+        - { name: playground, port: 80 }
+---
+# ---------- /api/sse : stream tanpa batas waktu ----------
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: playground-stream
+  namespace: playground
+spec:
+  parentRefs:
+    - name: playground-gateway
+  hostnames: ["gateway.local"]
+  rules:
+    - matches:
+        - path: { type: PathPrefix, value: /api/sse }
+      timeouts:
+        request: 0s
+      backendRefs:
+        - { name: playground, port: 80 }
+---
+# ---------- /api/cache : kompresi di gateway ----------
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: playground-cache
+  namespace: playground
+spec:
+  parentRefs:
+    - name: playground-gateway
+  hostnames: ["gateway.local"]
+  rules:
+    - matches:
+        - path: { type: PathPrefix, value: /api/cache }
+      backendRefs:
+        - { name: playground, port: 80 }
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: playground-cache-compression
+  namespace: playground
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: playground-cache
+  compression:
+    - type: Gzip
+---
+# ---------- /api/cookie : sticky session ----------
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: playground-sticky
+  namespace: playground
+spec:
+  parentRefs:
+    - name: playground-gateway
+  hostnames: ["gateway.local"]
+  rules:
+    - matches:
+        - path: { type: PathPrefix, value: /api/cookie }
+      backendRefs:
+        - { name: playground, port: 80 }
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: playground-sticky-cookie
+  namespace: playground
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: playground-sticky
+  loadBalancer:
+    type: ConsistentHash
+    consistentHash:
+      type: Cookie
+      cookie:
+        name: sid
+        ttl: 1h

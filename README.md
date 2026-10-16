@@ -127,7 +127,35 @@ curl -s --compressed -o /dev/null -w '%{size_download}\n' 'http://host/api/cache
 curl -s --compressed -o /dev/null -w '%{size_download}\n' 'http://host/api/cache?kb=512&gzip=1'  # ~1 KB: dikompres oleh app
 ```
 
-## Tes API Gateway (Kong)
+## Tes API Gateway (Envoy Gateway)
+
+Infra deploy contoh memakai **Envoy Gateway**. Manifest di `k8s/envoy-gateway/` memakai Gateway API (`HTTPRoute`) plus policy Envoy Gateway:
+
+```bash
+kubectl apply -f k8s/app.yaml
+kubectl apply -f k8s/envoy-gateway/gateway.yaml   # opsional: lewati bila Gateway sudah disediakan platform
+kubectl apply -f k8s/envoy-gateway/routes.yaml    # ubah parentRefs bila nama Gateway berbeda
+PROXY=http://<alamat-gateway> API_KEY=<key di Secret demo-apikeys> bash k8s/envoy-gateway/test.sh   # SLOW=1 untuk tes timeout dan streaming
+```
+
+| Route | Resource | Yang diuji |
+|---|---|---|
+| `/blue` | BackendTrafficPolicy (rate limit 5/menit) + header `X-Gateway` | 200 lalu 429 |
+| `/green` | SecurityPolicy (apiKeyAuth + CORS) | 401 tanpa key, 200 dengan `apikey`, preflight |
+| `/gw/*` | filter `URLRewrite` | prefix dibuang |
+| `/api/secure/whoami` | SecurityPolicy (apiKeyAuth) | identitas lewat `x-client-id` |
+| `/api/flaky` | BackendTrafficPolicy (retry) | kegagalan ±30% → mendekati 0 |
+| `/api/delay`, `/api/sse` | `timeouts.request` pada HTTPRoute | request 20 dtk lolos, stream tidak terpotong |
+| `/api/cache` | BackendTrafficPolicy (compression) | gzip dari gateway |
+| `/api/cookie` | BackendTrafficPolicy (consistent hash cookie) | sticky session |
+
+Perilaku bawaan Envoy yang terbukti di infra contoh: **timeout route 15 detik**. `/api/delay?ms=16000` dijawab 504 di detik ke-15 dan stream SSE terpotong di 15 event, sampai `timeouts.request` dinaikkan. Header `x-request-id` dibuat Envoy, dan header `x-envoy-*` tidak diteruskan kecuali `ClientTrafficPolicy.headers.enableEnvoyHeaders: true`.
+
+Nama header identitas ditentukan policy, jadi `/api/secure/whoami` memantau `x-consumer-username` (Kong), `x-client-id` (apiKeyAuth), `x-user` (basicAuth), dan `x-forwarded-user`; env `IDENTITY_HEADERS` menimpanya (mis. untuk `claimToHeaders` JWT).
+
+Status verifikasi: manifest divalidasi terhadap skema CRD (kubeconform `-strict`, 18 resource valid) dan `test.sh` diuji sebagai kontrol negatif terhadap infra yang belum memasang route ini. Manifest **belum dijalankan di cluster Envoy Gateway**, dan `apiKeyAuth` serta `rateLimit.local` butuh versi Envoy Gateway yang cukup baru (±1.4 ke atas).
+
+## Tes API Gateway (Kong, alternatif)
 
 Satu image, dua halaman berbeda: `/blue` dan `/green`. Setelah `k8s/app.yaml` ter-deploy dan Kong Ingress Controller terpasang:
 

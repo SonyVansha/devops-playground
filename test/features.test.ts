@@ -358,3 +358,59 @@ test('cache route: gzip=1 compresses only when client accepts gzip; ETag differs
   const untouched = await cache(r('/api/cache?kb=64&v=z', { 'accept-encoding': 'gzip' }), undefined);
   assert.equal(untouched.headers.get('content-encoding'), null); // tanpa gzip=1 tidak pernah dikompres
 });
+
+// ---------- identitas gateway yang dapat dikonfigurasi (Envoy Gateway / Kong) ----------
+
+test('identity: nama header bawaan mencakup Kong dan Envoy Gateway, urutan = prioritas', async () => {
+  const { identityHeaders, findIdentity, DEFAULT_IDENTITY_HEADERS } = await import('../src/lib/identity.ts');
+  assert.deepEqual(identityHeaders(undefined), [...DEFAULT_IDENTITY_HEADERS]);
+  assert.deepEqual(identityHeaders(''), [...DEFAULT_IDENTITY_HEADERS]);
+  assert.deepEqual(identityHeaders(' X-Foo , x-bar '), ['x-foo', 'x-bar']);
+  assert.deepEqual(identityHeaders('bad header!, ../x,'), [...DEFAULT_IDENTITY_HEADERS]); // semua tidak valid -> bawaan
+  assert.deepEqual(identityHeaders('ok-1,bad name'), ['ok-1']);
+
+  const h = new Headers({ 'x-client-id': 'client-a', 'x-user': 'alice' });
+  assert.deepEqual(findIdentity(h), { header: 'x-client-id', value: 'client-a' }); // x-client-id lebih dulu dari x-user
+  assert.deepEqual(findIdentity(h, ['x-user']), { header: 'x-user', value: 'alice' });
+  assert.equal(findIdentity(new Headers({ 'x-user': '   ' })), null); // kosong dianggap tidak ada
+  assert.equal(findIdentity(new Headers()), null);
+  assert.equal(findIdentity(new Headers({ 'x-user': 'a'.repeat(400) }))?.value.length, 256); // dibatasi
+});
+
+test('whoami: membaca identitas dari header Envoy Gateway dan dari IDENTITY_HEADERS', async () => {
+  delete process.env.IDENTITY_HEADERS;
+  const viaClient = await (await whoami(r('/api/secure/whoami', { 'x-client-id': 'demo-user' }), undefined)).json();
+  assert.equal(viaClient.authenticated, true);
+  assert.equal(viaClient.identityHeader, 'x-client-id');
+  assert.equal(viaClient.consumer.username, 'demo-user');
+
+  const viaUser = await (await whoami(r('/api/secure/whoami?require=1', { 'x-user': 'alice' }), undefined)).json();
+  assert.equal(viaUser.identityHeader, 'x-user');
+
+  const kong = await (await whoami(r('/api/secure/whoami', { 'x-consumer-username': 'k', 'x-client-id': 'e' }), undefined)).json();
+  assert.equal(kong.identityHeader, 'x-consumer-username'); // Kong diprioritaskan sesuai urutan bawaan
+
+  process.env.IDENTITY_HEADERS = 'x-jwt-sub';
+  try {
+    const custom = await (await whoami(r('/api/secure/whoami', { 'x-jwt-sub': 'sub-123', 'x-client-id': 'diabaikan' }), undefined)).json();
+    assert.equal(custom.identityHeader, 'x-jwt-sub');
+    assert.equal(custom.consumer.username, 'sub-123');
+    assert.deepEqual(custom.watchedHeaders, ['x-jwt-sub']);
+    const ignored = await (await whoami(r('/api/secure/whoami', { 'x-client-id': 'abaikan-saja' }), undefined)).json();
+    assert.equal(ignored.authenticated, false); // header bawaan tidak dipantau lagi bila dikonfigurasi
+  } finally {
+    delete process.env.IDENTITY_HEADERS;
+  }
+});
+
+test('gatewayHeaders menampilkan header khas Envoy dan identitas, tanpa membocorkan kredensial', async () => {
+  const { gatewayHeaders } = await import('../src/lib/gateway.ts');
+  const out = gatewayHeaders(
+    new Headers({ 'x-envoy-external-address': '1.2.3.4', 'x-forwarded-port': '8080', 'x-client-id': 'c', 'x-request-id': 'rid', authorization: 'Bearer rahasia' }),
+  );
+  assert.equal(out['x-envoy-external-address'], '1.2.3.4');
+  assert.equal(out['x-forwarded-port'], '8080');
+  assert.equal(out['x-client-id'], 'c');
+  assert.equal(out['x-request-id'], 'rid');
+  assert.equal('authorization' in out, false);
+});

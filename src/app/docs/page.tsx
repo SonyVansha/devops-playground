@@ -19,7 +19,7 @@ export default function DocsIndex() {
 
       <aside className="callout warn" role="note" style={{ marginTop: 24 }}>
         <span className="callout-label">Status pengujian</span>
-        Perilaku level aplikasi sudah diuji di container. Langkah yang membutuhkan cluster (Kubernetes, Kong, Argo Rollouts) belum diuji di cluster
+        Perilaku level aplikasi sudah diuji di container. Langkah yang membutuhkan cluster (Kubernetes, Envoy Gateway, Kong, Argo Rollouts) belum diuji di cluster
         sungguhan: jalankan dengan <code>--dry-run=server</code> dulu dan sesuaikan dengan lingkunganmu.
       </aside>
 

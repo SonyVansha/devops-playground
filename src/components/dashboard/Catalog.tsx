@@ -46,7 +46,7 @@ const ENDPOINTS: ReadonlyArray<{ group: string; items: Endpoint[] }> = [
   {
     group: 'Autentikasi & identitas',
     items: [
-      { title: 'Identitas dari gateway', method: 'GET', path: '/api/secure/whoami?require=1', simulates: 'Kong key-auth, jwt, basic-auth, oidc menambah X-Consumer-*.', verify: '401 tanpa kredensial; 200 dan consumer terisi lewat gateway.', headers: { apikey: '<api-key>' } },
+      { title: 'Identitas dari gateway', method: 'GET', path: '/api/secure/whoami?require=1', simulates: 'Gateway meneruskan identitas klien (Kong: X-Consumer-*, Envoy Gateway: header dari SecurityPolicy, mis. x-client-id).', verify: '401 tanpa kredensial; 200 dan consumer terisi lewat gateway.', headers: { apikey: '<api-key>' } },
       { title: 'Klaim JWT', method: 'GET', path: '/api/secure/jwt', simulates: 'Bearer JWT; verifikasi HS256 bila JWT_SECRET di-set.', verify: 'Klaim terbaca; signature salah atau token kedaluwarsa dibalas 401.', headers: { Authorization: 'Bearer <jwt>' } },
       { title: 'Basic auth di app', method: 'GET', path: '/api/secure/basic', simulates: 'Basic auth level aplikasi (BASIC_USER, BASIC_PASSWORD).', verify: '401 + WWW-Authenticate tanpa kredensial; 200 dengan kredensial benar.', headers: { Authorization: 'Basic <base64 user:pass>' } },
     ],
@@ -64,7 +64,7 @@ const ENDPOINTS: ReadonlyArray<{ group: string; items: Endpoint[] }> = [
     group: 'Ingress, gateway & jaringan',
     items: [
       { title: 'Header diterima', method: 'GET', path: '/api/headers', simulates: 'Request lewat ingress/gateway.', verify: 'X-Forwarded-*, Host benar; kredensial ter-redact.' },
-      { title: 'Header gateway', method: 'GET', path: '/api/gateway', simulates: 'Plugin gateway (consumer, correlation-id, trace).', verify: 'X-Consumer-Username, X-Correlation-Id, traceparent terisi.' },
+      { title: 'Header gateway', method: 'GET', path: '/api/gateway', simulates: 'Header dari gateway (request-id, forwarded, consumer, trace).', verify: 'x-request-id, x-forwarded-*, traceparent terisi; x-envoy-* bila enableEnvoyHeaders aktif.' },
       { title: 'Path echo', method: 'GET', path: '/path/a/b/c', simulates: 'Rewrite/strip-path/prefix.', verify: 'Path yang diterima app sesuai aturan routing.' },
       { title: 'Halaman biru / hijau', method: 'GET', path: '/blue', simulates: 'Dua route berbeda ke satu Service (juga /green).', verify: 'Route, plugin, dan auth per path.' },
       { title: 'Redirect', method: 'GET', path: '/api/redirect?n=3&code=302', simulates: 'Rantai redirect relatif.', verify: 'Location tidak bocor host internal; prefix terjaga.' },
@@ -79,7 +79,7 @@ const ENDPOINTS: ReadonlyArray<{ group: string; items: Endpoint[] }> = [
     items: [
       { title: 'Status code', method: 'GET', path: '/api/status/503', simulates: 'Error upstream apa pun (200-599).', verify: 'Retry, error page, alert, outlier detection.' },
       { title: 'Flaky 30%', method: 'GET', path: '/api/flaky?rate=30&status=503', simulates: 'Kegagalan acak.', verify: 'Retry policy dan circuit breaker bekerja.' },
-      { title: 'Delay 5 detik', method: 'GET', path: '/api/delay?ms=5000', simulates: 'Upstream lambat.', verify: 'Timeout client/gateway/ingress sesuai konfigurasi.' },
+      { title: 'Delay 5 detik', method: 'GET', path: '/api/delay?ms=5000', simulates: 'Upstream lambat.', verify: 'Timeout client/gateway/ingress sesuai konfigurasi. Envoy memotong di 15 dtk secara bawaan (504).' },
       { title: 'Respons 1 MB', method: 'GET', path: '/api/payload?kb=1024', simulates: 'Respons besar.', verify: 'Buffering, compression, limit respons proxy.' },
       { title: 'Streaming SSE', method: 'GET', path: '/api/sse?events=15&interval=1000', simulates: 'Respons streaming.', verify: 'Event tiba satu per satu (curl -N); tidak di-buffer proxy.' },
       { title: 'Config ter-mount', method: 'GET', path: '/api/config', simulates: 'ConfigMap/Secret di volume.', verify: 'Checksum berubah setelah rollout config baru.' },

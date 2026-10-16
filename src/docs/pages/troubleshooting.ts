@@ -14,6 +14,26 @@ export const doc: Doc = {
           'platform tidak menyuntikkan env downward API (`POD_NAMESPACE`, `NODE_NAME`, `POD_IP`); app memakai manifest milik platform, bukan `k8s/app.yaml`',
           'nama pod dan IP kini diambil otomatis; namespace dari file service account bila ter-mount. Untuk nama node, tambahkan env `NODE_NAME` dari `spec.nodeName` (downward API) jika platform mengizinkan',
         ],
+        [
+          'Request lambat dijawab `504` tepat di ±15 detik padahal app sehat',
+          'timeout route bawaan Envoy (15 detik); ini timeout proxy, bukan bug app',
+          'naikkan `timeouts.request` pada rule HTTPRoute (halaman API gateway Envoy Gateway); verifikasi dengan `curl {{BASE}}/api/delay?ms=16000`',
+        ],
+        [
+          'Stream (SSE) terputus di ±15 detik tanpa event `done`',
+          'timeout route Envoy berlaku untuk seluruh respons, termasuk streaming',
+          '`timeouts.request: 0s` pada route yang melayani stream',
+        ],
+        [
+          '`/api/secure/whoami` tidak mengenali identitas dari gateway',
+          'nama header identitas dari gateway berbeda dari yang dipantau app',
+          'lihat `watchedHeaders` pada responsnya; atur env `IDENTITY_HEADERS` sesuai `forwardClientIDHeader`/`forwardUsernameHeader`/`claimToHeaders`',
+        ],
+        [
+          'Rate limit Envoy Gateway: 429 muncul lebih lambat dari batas yang dipasang',
+          'rate limit `Local` dihitung per replika Envoy, jadi batas efektif = batas × jumlah replika',
+          'turunkan batas per replika atau pakai `rateLimit.type: Global` (butuh Redis)',
+        ],
         ['Semua pod menyebut diri `0.0.0.0`', 'versi lama memakai env `HOSTNAME` (alamat bind) sebagai nama pod', 'gunakan versi terbaru: nama pod diambil dari hostname OS. Cek `curl {{BASE}}/api/info` → `podName` dan `identitySource`'],
         ['Pod `CrashLoopBackOff` sejak awal', '`BOOT_FAIL=true` atau `CRASH_AFTER_SECONDS` tertinggal di env', '`kubectl -n playground get deploy playground -o yaml | grep -A1 -E "BOOT_FAIL|CRASH_AFTER"`; hapus dengan `set env ... BOOT_FAIL-`'],
         ['`Cannot find module ...` saat start container', 'file Next terbuang dari output standalone (mis. `@swc/helpers` ikut di-exclude)', 'jangan exclude `@swc/helpers`; build ulang dan cek `docker logs`'],

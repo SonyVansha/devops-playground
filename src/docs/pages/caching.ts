@@ -56,7 +56,7 @@ export const doc: Doc = {
     {
       t: 'ol',
       items: [
-        'Pasang cache di gateway (mis. plugin `proxy-cache` Kong, lihat halaman API gateway).',
+        'Pasang cache di gateway atau CDN (mis. plugin `proxy-cache` Kong; Envoy Gateway pada versi yang kami acu tidak punya policy cache respons, jadi gunakan CDN di depannya).',
         'Panggil `/api/cache?ttl=30&v=1` dua kali; `generatedAt` harus sama dan header `X-Cache-Status` berubah `Miss` → `Hit`.',
         'Ganti `v=2`: kunci cache berbeda, `generatedAt` baru.',
         'Tunggu TTL habis: `generatedAt` baru lagi (atau tetap lama sementara untuk `mode=swr` sambil revalidasi di latar belakang).',

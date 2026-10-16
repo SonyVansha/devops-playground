@@ -2,9 +2,14 @@ import type { Doc } from '../types.ts';
 
 export const doc: Doc = {
   slug: 'api-gateway-kong',
-  title: 'API gateway (Kong)',
-  summary: 'Satu Service, dua halaman (blue/green), plugin rate-limit, key-auth, strip-path, CORS, dan header gateway.',
+  title: 'API gateway: Kong (alternatif)',
+  summary: 'Untuk cluster yang memakai Kong: satu Service, dua halaman (blue/green), plugin rate-limit, key-auth, strip-path, CORS, dan header gateway.',
   blocks: [
+    {
+      t: 'note',
+      kind: 'info',
+      text: 'Halaman ini untuk cluster yang memakai **Kong**. Jika infra-mu memakai Envoy Gateway, ikuti halaman *API gateway (Envoy Gateway)*; skenario dan hasil yang diharapkan sejajar.',
+    },
     {
       t: 'p',
       text: 'Satu image menyajikan dua halaman berbeda, `/blue` dan `/green`. Kong dipasang di depannya dengan plugin berbeda per route supaya kamu bisa memeriksa routing, autentikasi, rate limit, dan transformasi header.',

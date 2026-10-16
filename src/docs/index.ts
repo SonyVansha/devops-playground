@@ -3,6 +3,7 @@ import { doc as mulaiCepat } from './pages/mulai-cepat.ts';
 import { doc as probeLifecycle } from './pages/probe-lifecycle.ts';
 import { doc as skenarioDeploy } from './pages/skenario-deploy.ts';
 import { doc as canaryRollout } from './pages/canary-rollout.ts';
+import { doc as envoy } from './pages/envoy-gateway.ts';
 import { doc as kong } from './pages/kong.ts';
 import { doc as multiHop } from './pages/multi-hop.ts';
 import { doc as auth } from './pages/auth.ts';
@@ -20,7 +21,7 @@ import { doc as referensi } from './pages/referensi.ts';
 export const GROUPS: DocGroup[] = [
   { name: 'Mulai', docs: [mulaiCepat, probeLifecycle] },
   { name: 'Skenario', docs: [skenarioDeploy, canaryRollout, multiHop, resilience, faultInjection] },
-  { name: 'Gateway & akses', docs: [kong, auth, caching] },
+  { name: 'Gateway & akses', docs: [envoy, kong, auth, caching] },
   { name: 'Operasional', docs: [jaringanConfig, observability, buildScan] },
   { name: 'Referensi', docs: [troubleshooting, referensi] },
 ];

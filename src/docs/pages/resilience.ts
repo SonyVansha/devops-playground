@@ -16,7 +16,7 @@ export const doc: Doc = {
       t: 'check',
       title: 'Delay terkendali',
       command: 'curl -s -o /dev/null -w "%{time_total}s\\n" "{{BASE}}/api/delay?ms=2000"',
-      expect: '≈ `2.0s`. Maksimal 30000 ms. Untuk uji timeout, set delay sedikit di atas timeout gateway/ingress dan pastikan responsnya 504/timeout.',
+      expect: '≈ `2.0s`. Maksimal 30000 ms. Untuk uji timeout, set delay sedikit di atas timeout gateway/ingress dan pastikan responsnya 504/timeout. Di belakang Envoy/Envoy Gateway, timeout route bawaan adalah 15 detik: `ms=16000` dijawab `504` di detik ke-15 walau app sehat (lihat halaman API gateway Envoy Gateway untuk mengubahnya).',
     },
     { t: 'h', text: 'Kegagalan acak (retry, circuit breaker)' },
     {
@@ -30,7 +30,7 @@ export const doc: Doc = {
       t: 'check',
       title: 'Event datang satu per satu',
       command: 'curl -N "{{BASE}}/api/sse?events=5&interval=1000"',
-      expect: 'lima event `id: 1..5` muncul **satu per detik** (bukan sekaligus di akhir), ditutup `event: done`. Jika semuanya muncul bersamaan, ada proxy yang mem-buffer respons (matikan buffering atau cek `X-Accel-Buffering`).',
+      expect: 'lima event `id: 1..5` muncul **satu per detik** (bukan sekaligus di akhir), ditutup `event: done`. Jika semuanya muncul bersamaan, ada proxy yang mem-buffer respons (matikan buffering atau cek `X-Accel-Buffering`). Stream yang lebih lama dari timeout route proxy akan terputus tanpa `event: done` (Envoy: 15 detik secara bawaan; coba `events=20&interval=1000`).',
     },
     { t: 'h', text: 'Payload besar' },
     {
