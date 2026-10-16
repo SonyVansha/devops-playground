@@ -20,6 +20,7 @@ export interface InfoData {
   appVersion: string;
   nodeVersion: string;
   chaosEnabled: boolean;
+  identitySource: { pod: string | null; namespace: string | null; nodeName: string | null; podIp: string | null };
   uptimeSeconds: number;
   ready: boolean;
   healthy: boolean;

@@ -83,6 +83,21 @@ export const doc: Doc = {
       kind: 'info',
       text: 'Base `distroless/nodejs24-debian13` dipilih karena `debian12` membawa CVE HIGH di libssl3 yang belum diperbarui upstream. Pin base image dengan digest di CI agar build bisa direproduksi.',
     },
+    { t: 'h', text: 'Membaca hasil scan platform' },
+    {
+      t: 'p',
+      text: 'Bila deploy lewat platform yang memindai build (secret, SCA, SAST, IaC, image), temuan umum untuk repo ini dan cara menanganinya:',
+    },
+    {
+      t: 'table',
+      head: ['Temuan', 'Arti', 'Tindakan'],
+      rows: [
+        ['`curl-auth-header` / `curl-auth-user` (gitleaks)', 'contoh perintah `curl` yang menyertakan kredensial literal; confidence rendah', 'sudah diganti memakai variabel di skrip dan docs, jadi tidak lagi terdeteksi'],
+        ['`KSV-0125` (Trivy IaC)', 'image di manifest contoh memakai `registry.example.com`, yang bukan registry tepercaya', 'ganti dengan registry milikmu atau tandai sebagai waiver/accepted risk; manifest di `k8s/` hanyalah contoh, bukan yang dipakai platform'],
+        ['`DS-0026` (Trivy IaC)', 'Dockerfile tanpa `HEALTHCHECK`', 'sudah ditambahkan memakai Node (distroless tidak punya shell/curl); Kubernetes tetap memakai probe'],
+        ['CVE medium/low di `libc6`, `libgcc-s1`, `libstdc++6`, `zlib1g`', 'paket Debian dari base image distroless, kolom fixed version kosong', 'tidak bisa diperbaiki dari sisi app; kebijakan default hanya memblokir yang punya perbaikan dan berstatus critical. Pantau, build ulang saat base diperbarui, atau waiver'],
+      ],
+    },
     { t: 'h', text: 'SonarQube' },
     {
       t: 'code',

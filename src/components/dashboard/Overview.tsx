@@ -41,6 +41,8 @@ const BEHAVIOR_LABELS: ReadonlyArray<[keyof InfoData['behavior'], string, string
 
 export default function Overview({ info, active }: Readonly<{ info: InfoData | null; active: boolean }>) {
   const v = (x: string | null | undefined) => x ?? '—';
+  const missing = (x: string | null | undefined) => (info && !x ? <span className="muted">tidak tersedia</span> : v(x));
+  const lacksIdentity = info ? !info.namespace || !info.nodeName || !info.podIp : false;
   const dep = info?.dependency;
   const anyBehavior = info ? BEHAVIOR_LABELS.some(([k]) => info.behavior[k] !== 0 && info.behavior[k] !== false) : false;
 
@@ -54,17 +56,23 @@ export default function Overview({ info, active }: Readonly<{ info: InfoData | n
             <Row label="Pod" mono>
               {v(info?.podName ?? info?.hostname)}
             </Row>
-            <Row label="Namespace">{v(info?.namespace)}</Row>
+            <Row label="Namespace">{missing(info?.namespace)}</Row>
             <Row label="Node" mono>
-              {v(info?.nodeName)}
+              {missing(info?.nodeName)}
             </Row>
             <Row label="IP pod" mono>
-              {v(info?.podIp)}
+              {missing(info?.podIp)}
             </Row>
             <Row label="Node.js">{v(info?.nodeVersion)}</Row>
             <Row label="Uptime">{info ? fmtUptime(info.uptimeSeconds) : '—'}</Row>
             <Row label="Memori (RSS)">{info ? `${info.rssMb} MB` : '—'}</Row>
           </dl>
+          {lacksIdentity && (
+            <p className="sub" style={{ margin: 0, padding: '10px 16px 12px', borderTop: '1px solid var(--line)', color: 'var(--muted)', fontSize: 13 }}>
+              “Tidak tersedia” berarti platform tidak menyuntikkan env <code>POD_NAMESPACE</code>, <code>NODE_NAME</code>, atau <code>POD_IP</code>. Nama pod dan IP
+              diambil otomatis dari hostname dan antarmuka jaringan; nama node hanya bisa lewat downward API (lihat <code>k8s/app.yaml</code>).
+            </p>
+          )}
         </section>
 
         <div className="stack">

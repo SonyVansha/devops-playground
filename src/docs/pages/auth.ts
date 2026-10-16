@@ -53,13 +53,13 @@ export const doc: Doc = {
     {
       t: 'check',
       title: 'Kredensial benar dan salah',
-      command: 'curl -s -o /dev/null -w "benar: %{http_code}\\n" -u admin:<password> {{BASE}}/api/secure/basic\ncurl -s -o /dev/null -w "salah: %{http_code}\\n" -u admin:salah {{BASE}}/api/secure/basic\ncurl -si {{BASE}}/api/secure/basic | grep -i www-authenticate',
+      command: 'export BASIC_USER=admin BASIC_PASSWORD=<password dari secret>\nGOOD=$(printf \'%s:%s\' "$BASIC_USER" "$BASIC_PASSWORD" | base64)\nBAD=$(printf \'%s:%s\' "$BASIC_USER" "salah" | base64)\ncurl -s -o /dev/null -w "benar: %{http_code}\\n" -H "Authorization: Basic $GOOD" {{BASE}}/api/secure/basic\ncurl -s -o /dev/null -w "salah: %{http_code}\\n" -H "Authorization: Basic $BAD" {{BASE}}/api/secure/basic\ncurl -si {{BASE}}/api/secure/basic | grep -i www-authenticate',
       expect: '`benar: 200`, `salah: 401`, dan tantangan `WWW-Authenticate: Basic realm="playground"`. Bila `BASIC_USER`/`BASIC_PASSWORD` belum diisi, endpoint menjawab 503.',
     },
     {
       t: 'check',
       title: 'Kredensial tidak bocor lewat /api/headers',
-      command: 'curl -s -H "Authorization: Bearer rahasia" -H "apikey: kunci" {{BASE}}/api/headers | grep -oE \'"(authorization|apikey)":"[^"]*"\'',
+      command: 'curl -s -H "Authorization: Bearer $TOKEN" -H "apikey: $API_KEY" {{BASE}}/api/headers | grep -oE \'"(authorization|apikey)":"[^"]*"\'',
       expect: '`"authorization":"[REDACTED]"` dan `"apikey":"[REDACTED]"`; nilai asli tidak muncul.',
     },
   ],

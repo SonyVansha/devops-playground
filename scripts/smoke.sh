@@ -40,7 +40,9 @@ check "jwt tanpa token ditolak"  401 "$(code "$BASE_URL/api/secure/jwt")"
 # Multi-hop: tanpa UPSTREAM_URL app berperan sebagai leaf (200); dengan upstream sehat tetap 200.
 check "chain"                    200 "$(code "$BASE_URL/api/chain?depth=2")"
 
-if curl -s -m 10 -H 'apikey: smoke-secret' "$BASE_URL/api/headers" | grep -q 'smoke-secret'; then
+# Nilai acak per run (bukan literal) agar tidak terbaca sebagai kredensial oleh secret scanner.
+probe="probe-$-$RANDOM"
+if curl -s -m 10 -H "apikey: $probe" "$BASE_URL/api/headers" | grep -q "$probe"; then
   echo "FAIL  kredensial bocor di /api/headers"; fail=1
 else
   echo "PASS  kredensial di-redact"

@@ -9,6 +9,12 @@ export const doc: Doc = {
       t: 'table',
       head: ['Gejala', 'Kemungkinan penyebab', 'Perbaikan'],
       rows: [
+        [
+          'Namespace, Node, atau IP pod kosong ("tidak tersedia") di dashboard',
+          'platform tidak menyuntikkan env downward API (`POD_NAMESPACE`, `NODE_NAME`, `POD_IP`); app memakai manifest milik platform, bukan `k8s/app.yaml`',
+          'nama pod dan IP kini diambil otomatis; namespace dari file service account bila ter-mount. Untuk nama node, tambahkan env `NODE_NAME` dari `spec.nodeName` (downward API) jika platform mengizinkan',
+        ],
+        ['Semua pod menyebut diri `0.0.0.0`', 'versi lama memakai env `HOSTNAME` (alamat bind) sebagai nama pod', 'gunakan versi terbaru: nama pod diambil dari hostname OS. Cek `curl {{BASE}}/api/info` → `podName` dan `identitySource`'],
         ['Pod `CrashLoopBackOff` sejak awal', '`BOOT_FAIL=true` atau `CRASH_AFTER_SECONDS` tertinggal di env', '`kubectl -n playground get deploy playground -o yaml | grep -A1 -E "BOOT_FAIL|CRASH_AFTER"`; hapus dengan `set env ... BOOT_FAIL-`'],
         ['`Cannot find module ...` saat start container', 'file Next terbuang dari output standalone (mis. `@swc/helpers` ikut di-exclude)', 'jangan exclude `@swc/helpers`; build ulang dan cek `docker logs`'],
         ['Container tidak bisa diakses dari luar / probe gagal di K8s', '`HOSTNAME` dari Kubernetes (nama pod) dipakai Next sebagai alamat bind', 'set env `HOSTNAME=0.0.0.0` (sudah ada di manifest)'],

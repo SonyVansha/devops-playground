@@ -161,3 +161,61 @@ test('leakOnce grows held memory', async () => {
   assert.equal(state.heldMb, before + 1);
   state.heldMb = before;
 });
+
+test('identitas pod: env HOSTNAME (alamat bind) tidak dipakai, cadangan = hostname OS', async () => {
+  const { hostname } = await import('node:os');
+  const saved = { POD_NAME: process.env.POD_NAME, HOSTNAME: process.env.HOSTNAME };
+  delete process.env.POD_NAME;
+  process.env.HOSTNAME = '0.0.0.0'; // kondisi di platform: image menyetel HOSTNAME sebagai alamat bind
+  try {
+    assert.equal(selfName(), hostname());
+    assert.notEqual(selfName(), '0.0.0.0');
+    const info = podInfo();
+    assert.equal(info.podName, hostname());
+    assert.equal(info.hostname, hostname());
+    assert.equal(info.identitySource.pod, 'hostname');
+  } finally {
+    if (saved.POD_NAME === undefined) delete process.env.POD_NAME;
+    else process.env.POD_NAME = saved.POD_NAME;
+    if (saved.HOSTNAME === undefined) delete process.env.HOSTNAME;
+    else process.env.HOSTNAME = saved.HOSTNAME;
+  }
+});
+
+test('identitas pod: env downward API diutamakan dan sumbernya dicatat', () => {
+  const keys = ['POD_NAME', 'POD_NAMESPACE', 'NODE_NAME', 'POD_IP'] as const;
+  const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  Object.assign(process.env, { POD_NAME: 'web-1', POD_NAMESPACE: 'prod', NODE_NAME: 'node-a', POD_IP: '10.0.0.7' });
+  try {
+    const info = podInfo();
+    assert.deepEqual(
+      [info.podName, info.namespace, info.nodeName, info.podIp],
+      ['web-1', 'prod', 'node-a', '10.0.0.7'],
+    );
+    assert.deepEqual(info.identitySource, { pod: 'env', namespace: 'env', nodeName: 'env', podIp: 'env' });
+  } finally {
+    for (const k of keys) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  }
+});
+
+test('identitas pod: tanpa env, IP diambil dari antarmuka dan node tetap null', () => {
+  const keys = ['POD_NAME', 'POD_NAMESPACE', 'NODE_NAME', 'POD_IP'] as const;
+  const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  for (const k of keys) delete process.env[k];
+  try {
+    const info = podInfo();
+    assert.equal(info.nodeName, null);
+    assert.equal(info.identitySource.nodeName, null);
+    assert.ok(info.podIp === null || /^\d{1,3}(\.\d{1,3}){3}$/.test(info.podIp), `IP tidak valid: ${info.podIp}`);
+    assert.equal(info.identitySource.podIp, info.podIp === null ? null : 'interface');
+    assert.ok(info.namespace === null || /^[a-z0-9-]+$/.test(info.namespace));
+  } finally {
+    for (const k of keys) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  }
+});

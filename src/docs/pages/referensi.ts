@@ -61,7 +61,11 @@ export const doc: Doc = {
         ['`CONFIG_DIR`', '`/etc/playground`', 'direktori yang dilaporkan `/api/config`'],
         ['`JWT_SECRET`', '(kosong)', 'verifikasi HS256 di `/api/secure/jwt`'],
         ['`BASIC_USER`, `BASIC_PASSWORD`', '(kosong)', 'basic auth di `/api/secure/basic`'],
-        ['`POD_NAME`, `POD_NAMESPACE`, `NODE_NAME`, `POD_IP`', '(downward API)', 'identitas pod'],
+        [
+          '`POD_NAME`, `POD_NAMESPACE`, `NODE_NAME`, `POD_IP`',
+          '(downward API)',
+          'identitas pod. Bila tidak diset: nama pod dari hostname OS, namespace dari file service account (jika ter-mount), IP dari antarmuka jaringan. Nama node hanya tersedia lewat `NODE_NAME`',
+        ],
         ['`BASE_PATH` (build arg)', '(kosong)', 'prefix path, ditentukan saat build'],
       ],
     },
