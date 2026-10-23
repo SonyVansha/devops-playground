@@ -98,6 +98,25 @@ BASE_URL=https://playground.example.com EXPECT_VERSION=v2 bash scripts/smoke.sh
 kubectl -n playground create secret generic playground-chaos --from-literal=token=$(openssl rand -hex 16)
 ```
 
+### Database (PostgreSQL / MySQL)
+
+Tab **Database** di dashboard: isi jenis, host, port, user, password, dan nama database langsung di form, tanpa edit `.env`. Koneksi dikirim per request lewat header `X-DB-Conn` (base64 JSON; password hanya di memori browser, tidak disimpan di server). Syarat keamanan: `ENABLE_DB=true`, `DB_TOKEN` terpasang, header `X-DB-Token`.
+
+Opsional: env `DB_TYPE`, `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` dipakai sebagai default bila form dikosongkan / header tidak dikirim.
+
+Karena host berasal dari input, **jangan** aktifkan `ENABLE_DB` di instance publik tanpa `DB_TOKEN` yang kuat.
+
+| Endpoint | Fungsi |
+|---|---|
+| `GET /api/db` | Status fitur (tanpa rahasia) |
+| `POST /api/db/test` | `SELECT 1` + versi server, latensi |
+| `GET /api/db/tables` | Daftar tabel berawalan `playground_` |
+| `POST /api/db/tables` | `{"name":"notes","columns":[{"name":"title","type":"text"}]}`; tipe: `text`, `integer`, `boolean`, `timestamp`; kolom `id` otomatis |
+| `GET /api/db/tables/<name>` | 50 baris terbaru |
+| `POST /api/db/tables/<name>` | `{"values":{"title":"halo"}}` (parameter bind) |
+
+Nama tabel selalu diberi awalan `playground_`, jadi tabel aplikasi lain tidak tersentuh. Gunakan database tes, bukan production.
+
 ### Graceful shutdown
 
 SIGTERM → readiness 503 + `draining=true`, app tetap melayani `DRAIN_SECONDS` (default 10) lalu exit 0. Amati dengan `kubectl rollout restart` sambil menjalankan Burst. Membutuhkan `NEXT_MANUAL_SIG_HANDLE=true` (sudah di Dockerfile dan manifest).
