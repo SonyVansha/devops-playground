@@ -93,7 +93,7 @@ export const doc: Doc = {
       head: ['Temuan', 'Arti', 'Tindakan'],
       rows: [
         ['`curl-auth-header` / `curl-auth-user` (gitleaks)', 'contoh perintah `curl` yang menyertakan kredensial literal; confidence rendah', 'sudah diganti memakai variabel di skrip dan docs, jadi tidak lagi terdeteksi'],
-        ['`KSV-0125` (Trivy IaC)', 'image di manifest contoh memakai `registry.example.com`, yang bukan registry tepercaya', 'ganti dengan registry milikmu atau tandai sebagai waiver/accepted risk; manifest di `k8s/` hanyalah contoh, bukan yang dipakai platform'],
+        ['`KSV-0125` (Trivy IaC)', 'image di manifest memakai registry yang tidak dikenal (dulu `registry.example.com`)', 'manifest sekarang memakai `docker.io/your-dockerhub-user/...`, sesuai tempat CI mendorong image; ganti `your-dockerhub-user` dengan username Docker Hub-mu. Bila memakai registry lain, daftarkan sebagai tepercaya di kebijakan Trivy atau tandai waiver'],
         ['`DS-0026` (Trivy IaC)', 'Dockerfile tanpa `HEALTHCHECK`', 'sudah ditambahkan memakai Node (distroless tidak punya shell/curl); Kubernetes tetap memakai probe'],
         ['CVE medium/low di `libc6`, `libgcc-s1`, `libstdc++6`, `zlib1g`', 'paket Debian dari base image distroless, kolom fixed version kosong', 'tidak bisa diperbaiki dari sisi app; kebijakan default hanya memblokir yang punya perbaikan dan berstatus critical. Pantau, build ulang saat base diperbarui, atau waiver'],
       ],

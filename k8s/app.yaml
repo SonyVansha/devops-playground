@@ -48,8 +48,9 @@ spec:
           type: RuntimeDefault
       containers:
         - name: app
-          # Ganti dengan image kamu; hindari tag :latest, lebih baik pin digest.
-          image: registry.example.com/devops-playground:1.0.0
+          # Ganti "your-dockerhub-user" dengan username Docker Hub (sama dengan secret DOCKERHUB_USERNAME di CI).
+          # Hindari tag :latest; lebih baik pin digest (CI mencetak "image: ...@sha256:..." di ringkasan job).
+          image: docker.io/your-dockerhub-user/devops-playground:1.0.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

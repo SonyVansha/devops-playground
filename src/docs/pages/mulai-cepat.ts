@@ -34,7 +34,7 @@ export const doc: Doc = {
     {
       t: 'note',
       kind: 'warn',
-      text: 'Ganti `image:` di `k8s/app.yaml` (`registry.example.com/devops-playground:1.0.0`) dengan image yang sudah kamu push. Namespace memakai Pod Security `restricted`, jadi pod harus nonroot dan tanpa capability.',
+      text: 'Ganti `image:` di `k8s/app.yaml` (`docker.io/your-dockerhub-user/devops-playground:1.0.0`, ganti `your-dockerhub-user` dengan username Docker Hub-mu) dengan image yang sudah kamu push. Namespace memakai Pod Security `restricted`, jadi pod harus nonroot dan tanpa capability.',
     },
     { t: 'h', text: '2. Pastikan sehat' },
     {

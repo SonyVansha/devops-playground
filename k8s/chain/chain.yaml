@@ -6,7 +6,7 @@
 #       * readiness tier-b lalu tier-a gagal (DEPENDENCY_URL = /api/readyz tier di bawahnya), pod tidak di-restart
 #   - Pulihkan        : kubectl -n playground scale deploy/tier-c --replicas=1
 #   - Lambatkan tier-c: kubectl -n playground set env deploy/tier-c LATENCY_MS=5000   (CHAIN_TIMEOUT_MS=3000 -> 504/502)
-# Prasyarat: k8s/app.yaml sudah di-apply (namespace playground). Ganti image sesuai registry kamu.
+# Prasyarat: k8s/app.yaml sudah di-apply (namespace playground). Ganti "your-dockerhub-user" di ketiga image dengan username Docker Hub kamu.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -28,7 +28,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: app
-          image: registry.example.com/devops-playground:1.0.0
+          image: docker.io/your-dockerhub-user/devops-playground:1.0.0
           ports:
             - { name: http, containerPort: 3000 }
           env:
@@ -94,7 +94,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: app
-          image: registry.example.com/devops-playground:1.0.0
+          image: docker.io/your-dockerhub-user/devops-playground:1.0.0
           ports:
             - { name: http, containerPort: 3000 }
           env:
@@ -160,7 +160,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: app
-          image: registry.example.com/devops-playground:1.0.0
+          image: docker.io/your-dockerhub-user/devops-playground:1.0.0
           ports:
             - { name: http, containerPort: 3000 }
           env:
