@@ -1,7 +1,10 @@
 'use client';
 
-import { toCurl, urlFor } from './api';
-import { CopyButton } from './ui';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { call, toCurl, urlFor, type CallResult } from './api';
+import { hasPlaceholder } from './outcome';
+import { Icon } from '../shell/Icons';
+import { CopyButton, ResponseView } from './ui';
 
 interface Endpoint {
   title: string;
@@ -68,7 +71,7 @@ const ENDPOINTS: ReadonlyArray<{ group: string; items: Endpoint[] }> = [
       { title: 'Path echo', method: 'GET', path: '/path/a/b/c', simulates: 'Rewrite/strip-path/prefix.', verify: 'Path yang diterima app sesuai aturan routing.' },
       { title: 'Halaman biru / hijau', method: 'GET', path: '/blue', simulates: 'Dua route berbeda ke satu Service (juga /green).', verify: 'Route, plugin, dan auth per path.' },
       { title: 'Redirect', method: 'GET', path: '/api/redirect?n=3&code=302', simulates: 'Rantai redirect relatif.', verify: 'Location tidak bocor host internal; prefix terjaga.' },
-      { title: 'CORS preflight', method: 'OPTIONS', path: '/api/cors', simulates: 'Preflight; app tidak menambah CORS.', verify: 'Gateway yang menambahkan Access-Control-*.', headers: { Origin: 'https://example.com', 'Access-Control-Request-Method': 'GET' } },
+      { title: 'CORS preflight', method: 'OPTIONS', path: '/api/cors', simulates: 'Preflight; app tidak menambah CORS.', verify: 'Gateway yang menambahkan Access-Control-*.', headers: { Origin: 'https://frontend.local', 'Access-Control-Request-Method': 'GET' } },
       { title: 'Cookie / sticky', method: 'GET', path: '/api/cookie?name=sid&value=abc', simulates: 'Session affinity.', verify: 'Dengan cookie jar, pod yang melayani konsisten.' },
       { title: 'DNS in-cluster', method: 'GET', path: '/api/connect?type=dns&target=kubernetes.default.svc', simulates: 'Resolusi DNS dari dalam pod.', verify: 'CoreDNS sehat; host ada di CONNECT_ALLOWLIST.' },
       { title: 'TCP / egress', method: 'GET', path: '/api/connect?type=tcp&target=kubernetes.default.svc:443', simulates: 'Konektivitas keluar pod.', verify: 'NetworkPolicy egress mengizinkan/memblokir sesuai desain.' },
@@ -87,6 +90,8 @@ const ENDPOINTS: ReadonlyArray<{ group: string; items: Endpoint[] }> = [
   },
 ];
 
+const SCENARIO_GROUP = 'Skenario deploy';
+
 const DEPLOY_SCENARIOS: DeployScenario[] = [
   { title: 'Rollout gagal → rollback', env: 'BOOT_FAIL=true', expect: 'Pod CrashLoopBackOff, rollout tertahan; kubectl rollout undo atau rollback pipeline berjalan.' },
   { title: 'Start lambat', env: 'STARTUP_DELAY_SECONDS=60', expect: 'Startup/readiness 503 selama 60 dtk; liveness tidak membunuh; traffic baru masuk setelah ready.' },
@@ -98,22 +103,83 @@ const DEPLOY_SCENARIOS: DeployScenario[] = [
   { title: 'Memory leak', env: 'LEAK_MB_PER_MINUTE=20 (limit 256Mi)', expect: 'Memori naik tiap menit sampai OOMKilled; alert memori dan restart.' },
 ];
 
-function EndpointItem({ e }: Readonly<{ e: Endpoint }>) {
-  const curl = () => toCurl(e.method, e.path, e.headers ?? {}, '');
+// Browser menolak/mengabaikan header ini di fetch; untuk tes yang sebenarnya pakai curl.
+const BROWSER_BLOCKED = ['origin', 'accept-encoding', 'access-control-request-method', 'access-control-request-headers', 'cookie', 'host'];
+
+const envText = (env: string) => env.replace(/\s*\(.*\)\s*$/, '').split(/\s{2,}/).join('\n');
+
+function EndpointRow({ e }: Readonly<{ e: Endpoint }>) {
+  const [vals, setVals] = useState<Record<string, string>>(() =>
+    Object.fromEntries(Object.entries(e.headers ?? {}).map(([k, v]) => [k, hasPlaceholder(v) ? '' : v])),
+  );
+  const [busy, setBusy] = useState(false);
+  const [res, setRes] = useState<CallResult | null>(null);
+  const abort = useRef<AbortController | null>(null);
+
+  const headerNames = Object.keys(e.headers ?? {});
+  const missing = headerNames.filter((k) => hasPlaceholder(e.headers?.[k] ?? '') && !vals[k]?.trim());
+  const blocked = headerNames.filter((k) => BROWSER_BLOCKED.includes(k.toLowerCase()));
+  const effective = () => Object.fromEntries(Object.entries(vals).filter(([, v]) => v.trim() !== ''));
+
+  const run = async () => {
+    abort.current = new AbortController();
+    setBusy(true);
+    setRes(null);
+    setRes(await call(e.method, e.path, { headers: effective(), signal: abort.current.signal }));
+    setBusy(false);
+  };
+
+  const curl = () => toCurl(e.method, e.path, effective(), '');
+  const whyDisabled = missing.length > 0 ? `Isi ${missing.join(', ')} dulu.` : '';
+
   return (
     <li className="item">
-      <div>
+      <div className="item-main">
         <h3>{e.title}</h3>
         <p>{e.simulates}</p>
         <p className="verify-line">
           <b>Verifikasi:</b> {e.verify}
         </p>
+        {headerNames.length > 0 && (
+          <details className="item-headers" open={missing.length > 0}>
+            <summary>Header request ({headerNames.length})</summary>
+            <div className="stack" style={{ gap: 8 }}>
+              {headerNames.map((k) => (
+                <label key={k}>
+                  <span className="mono">{k}</span>
+                  <input
+                    value={vals[k] ?? ''}
+                    placeholder={hasPlaceholder(e.headers?.[k] ?? '') ? (e.headers?.[k] ?? '') : ''}
+                    onChange={(ev) => setVals({ ...vals, [k]: ev.target.value })}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                </label>
+              ))}
+              {blocked.length > 0 && (
+                <p className="hint">
+                  Browser mengabaikan header {blocked.join(', ')}. Untuk tes yang sebenarnya, pakai <strong>Salin curl</strong>.
+                </p>
+              )}
+            </div>
+          </details>
+        )}
       </div>
       <div className="item-side">
         <code className="req">
           {e.method} {e.path}
         </code>
         <div className="row">
+          {busy ? (
+            <button type="button" className="btn sm" onClick={() => abort.current?.abort()}>
+              Batalkan
+            </button>
+          ) : (
+            <button type="button" className="btn sm" onClick={() => void run()} disabled={missing.length > 0} aria-describedby={whyDisabled ? `why-${e.title}` : undefined}>
+              <Icon name="play" size={14} />
+              Jalankan
+            </button>
+          )}
           <CopyButton label="Salin curl" text={curl} />
           {e.method === 'GET' && (
             <a className="btn sm" href={urlFor(e.path)} target="_blank" rel="noreferrer">
@@ -121,50 +187,134 @@ function EndpointItem({ e }: Readonly<{ e: Endpoint }>) {
             </a>
           )}
         </div>
+        {whyDisabled && (
+          <span className="hint" id={`why-${e.title}`}>
+            {whyDisabled}
+          </span>
+        )}
+        {busy && <span className="hint">Menjalankan…</span>}
       </div>
+      {res && (
+        <div className="item-result">
+          <ResponseView res={res} />
+        </div>
+      )}
     </li>
   );
 }
 
-export default function Catalog() {
-  return (
-    <div className="stack" style={{ gap: 8 }}>
-      <p className="muted" style={{ maxWidth: '70ch' }}>
-        App ini adalah workload yang diuji, bukan alat penguji. Jalankan tes dari luar (kubectl, CI, k6, curl, atau gateway) dengan perintah di
-        bawah, lalu amati hasilnya di cluster atau pipeline. Panduan langkah demi langkah ada di{' '}
-        <a href="/docs">Dokumentasi</a>.
-      </p>
+const matches = (q: string, ...parts: string[]) => parts.some((p) => p.toLowerCase().includes(q));
 
-      <h2 className="section-title">Skenario deploy (diatur lewat env di Deployment)</h2>
-      <div className="scroll-x">
-        <table className="kv">
-          <thead>
-            <tr>
-              <th>Skenario</th>
-              <th>Env</th>
-              <th>Yang diharapkan</th>
-            </tr>
-          </thead>
-          <tbody>
-            {DEPLOY_SCENARIOS.map((s) => (
-              <tr key={s.title}>
-                <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{s.title}</td>
-                <td>
-                  <code>{s.env}</code>
-                </td>
-                <td>{s.expect}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+export default function Catalog() {
+  const [query, setQuery] = useState('');
+  const [group, setGroup] = useState<string | null>(null);
+  const search = useRef<HTMLInputElement>(null);
+  const q = query.trim().toLowerCase();
+
+  // Tekan "/" untuk langsung mencari (hanya bila tampilan ini sedang terlihat).
+  useEffect(() => {
+    const onKey = (ev: KeyboardEvent) => {
+      const t = ev.target as HTMLElement | null;
+      const typing = t !== null && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT');
+      const el = search.current;
+      if (ev.key === '/' && !typing && el && el.offsetParent !== null) {
+        ev.preventDefault();
+        el.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  const scenarios = useMemo(
+    () => (group === null || group === SCENARIO_GROUP ? DEPLOY_SCENARIOS.filter((s) => !q || matches(q, s.title, s.env, s.expect)) : []),
+    [q, group],
+  );
+  const groups = useMemo(
+    () =>
+      ENDPOINTS.filter((g) => group === null || group === g.group)
+        .map((g) => ({ ...g, items: g.items.filter((e) => !q || matches(q, e.title, e.path, e.simulates, e.verify)) }))
+        .filter((g) => g.items.length > 0),
+    [q, group],
+  );
+  const total = scenarios.length + groups.reduce((n, g) => n + g.items.length, 0);
+  const chips = [SCENARIO_GROUP, ...ENDPOINTS.map((g) => g.group)];
+
+  return (
+    <div className="stack" style={{ gap: 14 }}>
+      <div className="filter-bar">
+        <label className="field-grow">
+          Cari skenario atau endpoint
+          <input
+            ref={search}
+            type="search"
+            value={query}
+            onChange={(ev) => setQuery(ev.target.value)}
+            placeholder="mis. cache, 503, jwt, canary  (tekan / untuk mencari)"
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </label>
+        <span className="muted" aria-live="polite">
+          {q || group ? `${total} hasil` : ''}
+        </span>
+      </div>
+      <div className="chips" role="group" aria-label="Filter kategori">
+        <button type="button" className="chip" aria-pressed={group === null} onClick={() => setGroup(null)}>
+          Semua
+        </button>
+        {chips.map((c) => (
+          <button key={c} type="button" className="chip" aria-pressed={group === c} onClick={() => setGroup(group === c ? null : c)}>
+            {c}
+          </button>
+        ))}
       </div>
 
-      {ENDPOINTS.map((g) => (
+      {total === 0 && <p className="empty-frame">Tidak ada yang cocok dengan “{query}”. Hapus filter untuk melihat semuanya.</p>}
+
+      {scenarios.length > 0 && (
+        <section>
+          <h2 className="section-title">{SCENARIO_GROUP}</h2>
+          <p className="muted" style={{ marginBottom: 10 }}>
+            Atur lewat env di Deployment, lalu amati perilakunya di cluster atau pipeline.
+          </p>
+          <div className="scroll-x" tabIndex={0} role="region" aria-label="Tabel skenario deploy">
+            <table className="kv stack-sm">
+              <thead>
+                <tr>
+                  <th scope="col">Skenario</th>
+                  <th scope="col">Env</th>
+                  <th scope="col">Yang diharapkan</th>
+                  <th scope="col">
+                    <span className="sr-only">Aksi</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {scenarios.map((s) => (
+                  <tr key={s.title}>
+                    <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{s.title}</td>
+                    <td>
+                      <code>{s.env}</code>
+                    </td>
+                    <td>{s.expect}</td>
+                    <td>
+                      <CopyButton label="Salin env" text={envText(s.env)} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {groups.map((g) => (
         <section key={g.group}>
           <h2 className="section-title">{g.group}</h2>
           <ul className="items">
             {g.items.map((e) => (
-              <EndpointItem key={e.title} e={e} />
+              <EndpointRow key={e.title} e={e} />
             ))}
           </ul>
         </section>

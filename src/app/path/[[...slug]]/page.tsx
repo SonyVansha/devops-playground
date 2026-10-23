@@ -1,5 +1,8 @@
 import { headers } from 'next/headers';
+import Link from 'next/link';
 import { gatewayHeaders } from '../../../lib/gateway';
+import { Icon } from '../../../components/shell/Icons';
+import Shell from '../../../components/shell/Shell';
 
 export const dynamic = 'force-dynamic';
 
@@ -7,26 +10,41 @@ export const dynamic = 'force-dynamic';
 export default async function PathEcho({ params }: Readonly<{ params: Promise<{ slug?: string[] }> }>) {
   const { slug = [] } = await params;
   const rows = gatewayHeaders(await headers());
+  const nav = (
+    <>
+      <Link href="/" className="nav-item">
+        <Icon name="back" />
+        Dashboard
+      </Link>
+      <Link href="/docs" className="nav-item">
+        <Icon name="docs" />
+        Dokumentasi
+      </Link>
+    </>
+  );
   return (
-    <main className="app" style={{ maxWidth: 760 }}>
-      <p className="muted" style={{ marginBottom: 8 }}>
-        <a href={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}/`}>Dashboard</a> / Path echo
-      </p>
-      <h1 className="wordmark">Path yang diterima app</h1>
-      <p style={{ margin: '10px 0 20px' }}>
-        <code>/{slug.join('/')}</code>
-      </p>
-      <section className="panel" aria-label="Header dari proxy dan gateway">
-        <h2>Header dari proxy dan gateway</h2>
-        <dl className="dl">
-          {Object.entries(rows).map(([name, value]) => (
-            <div className="dl-row" key={name}>
-              <dt className="mono">{name}</dt>
-              <dd className="mono">{value ?? <span className="muted">—</span>}</dd>
-            </div>
-          ))}
-        </dl>
-      </section>
-    </main>
+    <Shell nav={nav} title="Path echo">
+      <main className="canvas">
+        <div className="title-row">
+          <div>
+            <h1>Path yang diterima app</h1>
+            <p className="sub-line">
+              Path yang sampai ke app setelah melewati ingress atau gateway: <code>/{slug.join('/')}</code>
+            </p>
+          </div>
+        </div>
+        <section className="panel" aria-label="Header dari proxy dan gateway" style={{ maxWidth: 760 }}>
+          <h2>Header dari proxy dan gateway</h2>
+          <dl className="dl">
+            {Object.entries(rows).map(([name, value]) => (
+              <div className="dl-row" key={name}>
+                <dt className="mono">{name}</dt>
+                <dd className="mono">{value ?? <span className="muted">—</span>}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      </main>
+    </Shell>
   );
 }
