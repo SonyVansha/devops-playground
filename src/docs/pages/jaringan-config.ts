@@ -41,7 +41,7 @@ export const doc: Doc = {
     {
       t: 'check',
       title: 'Rewrite / prefix',
-      command: 'curl -s -o /dev/null -w "%{http_code}\\n" {{BASE}}/path/a/b/c\ncurl -s {{BASE}}/path/a/b/c | grep -o "Path diterima app[^<]*<code>[^<]*"',
+      command: 'curl -s -o /dev/null -w "%{http_code}\\n" {{BASE}}/path/a/b/c\ncurl -s {{BASE}}/path/a/b/c | grep -o "<code>/[^<]*</code>"',
       expect: '`200` dan halaman menampilkan path persis yang sampai ke app. Jika ingress memakai rewrite/strip-path, path di halaman berbeda dari path yang kamu panggil, itulah yang diperiksa.',
     },
     {

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { DOCS } from '../src/docs/index.ts';
+import { DOCS as DOCS_ID, DOCS_EN, GROUPS, GROUPS_EN } from '../src/docs/index.ts';
 import type { Block } from '../src/docs/types.ts';
 
 const API_ROOT = join(import.meta.dirname, '..', 'src', 'app');
@@ -58,7 +58,13 @@ function allFiles(dir: string): string[] {
   });
 }
 
-test('docs: slugs unik, kebab-case, dan setiap halaman punya isi', () => {
+const SETS = [
+  ['id', DOCS_ID],
+  ['en', DOCS_EN],
+] as const;
+
+for (const [lang, DOCS] of SETS) {
+test(`docs [${lang}]: slugs unik, kebab-case, dan setiap halaman punya isi`, () => {
   const slugs = DOCS.map((d) => d.slug);
   assert.equal(new Set(slugs).size, slugs.length, 'slug harus unik');
   for (const d of DOCS) {
@@ -68,7 +74,7 @@ test('docs: slugs unik, kebab-case, dan setiap halaman punya isi', () => {
   }
 });
 
-test('docs: tabel rapi dan blok "cek" lengkap', () => {
+test(`docs [${lang}]: tabel rapi dan blok "cek" lengkap`, () => {
   for (const d of DOCS) {
     for (const b of d.blocks) {
       if (b.t === 'table') {
@@ -83,7 +89,7 @@ test('docs: tabel rapi dan blok "cek" lengkap', () => {
   }
 });
 
-test('docs: {{BASE}} hanya dipakai di dalam kode (blok kode atau `inline`)', () => {
+test(`docs [${lang}]: {{BASE}} hanya dipakai di dalam kode (blok kode atau inline)`, () => {
   for (const d of DOCS) {
     for (const b of d.blocks) {
       for (const text of textsOf(b)) {
@@ -94,7 +100,7 @@ test('docs: {{BASE}} hanya dipakai di dalam kode (blok kode atau `inline`)', () 
   }
 });
 
-test('docs: tautan internal /docs/<slug> mengarah ke halaman yang ada', () => {
+test(`docs [${lang}]: tautan internal /docs/<slug> mengarah ke halaman yang ada`, () => {
   const slugs = new Set(DOCS.map((d) => d.slug));
   for (const d of DOCS) {
     for (const b of d.blocks) {
@@ -105,7 +111,7 @@ test('docs: tautan internal /docs/<slug> mengarah ke halaman yang ada', () => {
   }
 });
 
-test('docs: setiap endpoint /api/... yang disebut benar-benar ada di kode', () => {
+test(`docs [${lang}]: setiap endpoint /api/... yang disebut benar-benar ada di kode`, () => {
   const missing: string[] = [];
   let checked = 0;
   for (const d of DOCS) {
@@ -123,7 +129,7 @@ test('docs: setiap endpoint /api/... yang disebut benar-benar ada di kode', () =
   assert.deepEqual(missing, [], `endpoint di docs tidak ada di kode:\n${missing.join('\n')}`);
 });
 
-test('docs: variabel env di halaman referensi dipakai di kode/manifest', () => {
+test(`docs [${lang}]: variabel env di halaman referensi dipakai di kode/manifest`, () => {
   const referensi = DOCS.find((d) => d.slug === 'referensi');
   assert.ok(referensi);
   const root = join(import.meta.dirname, '..');
@@ -139,11 +145,12 @@ test('docs: variabel env di halaman referensi dipakai di kode/manifest', () => {
   assert.ok(corpus.includes('BASE_PATH'));
 });
 
-test('docs: setiap halaman berada di tepat satu grup dan heading punya id unik', async () => {
-  const { GROUPS, groupOf } = await import('../src/docs/index.ts');
+test(`docs [${lang}]: setiap halaman berada di tepat satu grup dan heading punya id unik`, async () => {
+  const groups = lang === 'id' ? GROUPS : GROUPS_EN;
+  const groupOf = (slug: string) => groups.find((g) => g.docs.some((d) => d.slug === slug))?.name;
   const { headingsOf, slugify } = await import('../src/docs/headings.ts');
-  assert.ok(GROUPS.length >= 3 && GROUPS.every((g) => g.name.trim() && g.docs.length > 0));
-  assert.equal(GROUPS.flatMap((g) => g.docs).length, DOCS.length);
+  assert.ok(groups.length >= 3 && groups.every((g) => g.name.trim() && g.docs.length > 0));
+  assert.equal(groups.flatMap((g) => g.docs).length, DOCS.length);
   for (const d of DOCS) {
     assert.ok(groupOf(d.slug), `${d.slug}: tidak ada di grup mana pun`);
     const ids = headingsOf(d.blocks).map((h) => h.id);
@@ -159,3 +166,4 @@ test('docs: setiap halaman berada di tepat satu grup dan heading punya id unik',
   ]);
   assert.deepEqual(dup.map((h) => h.id), ['sama', 'sama-2']);
 });
+}
