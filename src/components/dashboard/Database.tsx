@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useI18n } from '../../i18n/client';
+import Rich from '../Rich';
 import { Icon } from '../shell/Icons';
 import { call, type CallResult } from './api';
 import { usePoll, useRemembered } from './hooks';
@@ -39,6 +41,8 @@ interface NewColumn {
 }
 
 type Kind = 'bool' | 'int' | 'time' | 'text';
+// Penanda aksi yang sedang berjalan (stabil, bukan teks yang diterjemahkan).
+type Busy = 'connect' | 'create' | 'save' | 'tables' | 'rows';
 
 const TYPES = ['text', 'integer', 'boolean', 'timestamp'];
 const MAX_COLUMNS = 20;
@@ -65,6 +69,7 @@ function encodeConn(c: Record<string, string>): string {
 }
 
 export default function Database({ active }: Readonly<{ active: boolean }>) {
+  const { t } = useI18n();
   const { data } = usePoll<DbStatus>('/api/db', 10_000, active);
   // Yang diingat hanya isian non-rahasia. Password dan token tidak pernah disimpan.
   const [conn, setConn] = useRemembered<Remembered>('db', { type: 'postgres', host: '', port: '', user: '', database: '' });
@@ -80,7 +85,7 @@ export default function Database({ active }: Readonly<{ active: boolean }>) {
   const [newName, setNewName] = useState('');
   const [newCols, setNewCols] = useState<NewColumn[]>([{ name: 'title', type: 'text' }]);
   const [focusCol, setFocusCol] = useState<number | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  const [busy, setBusy] = useState<Busy | null>(null);
   const [connNote, setConnNote] = useState<Outcome | null>(null);
   const [tableNote, setTableNote] = useState<Outcome | null>(null);
 
@@ -106,8 +111,8 @@ export default function Database({ active }: Readonly<{ active: boolean }>) {
   );
 
   const api = useCallback(
-    async (label: string, method: string, path: string, body?: unknown): Promise<CallResult> => {
-      setBusy(label);
+    async (kind: Busy, method: string, path: string, body?: unknown): Promise<CallResult> => {
+      setBusy(kind);
       const res = await call(method, path, { headers: headers(body !== undefined), body: body !== undefined ? JSON.stringify(body) : undefined });
       setBusy(null);
       return res;
@@ -115,12 +120,12 @@ export default function Database({ active }: Readonly<{ active: boolean }>) {
     [headers],
   );
 
-  const note = (label: string, res: CallResult, ok?: string) => summarize(label, res, { token: 'DB token', ok });
+  const note = (label: string, res: CallResult) => summarize(label, res, t, { token: 'DB token' });
 
   const loadTables = async (): Promise<string[] | null> => {
-    const res = await api('muat tabel', 'GET', '/api/db/tables');
+    const res = await api('tables', 'GET', '/api/db/tables');
     if (!res.ok) {
-      setTableNote(note('muat tabel', res));
+      setTableNote(note(t('db.l.tables'), res));
       return null;
     }
     const list = parseJson<{ tables: string[] }>(res)?.tables ?? [];
@@ -129,11 +134,11 @@ export default function Database({ active }: Readonly<{ active: boolean }>) {
   };
 
   const loadRows = async (table: string) => {
-    const res = await api('lihat baris', 'GET', `/api/db/tables/${encodeURIComponent(table)}`);
+    const res = await api('rows', 'GET', `/api/db/tables/${encodeURIComponent(table)}`);
     if (res.ok) setRows(parseJson<RowsData>(res));
     else {
       setRows(null);
-      setTableNote(note('lihat baris', res));
+      setTableNote(note(t('db.l.rows'), res));
     }
   };
 
@@ -147,9 +152,8 @@ export default function Database({ active }: Readonly<{ active: boolean }>) {
 
   const connect = async (e: FormEvent) => {
     e.preventDefault();
-    const res = await api('menghubungkan', 'POST', '/api/db/test');
-    const outcome = note('hubungkan', res);
-    setConnNote(outcome);
+    const res = await api('connect', 'POST', '/api/db/test');
+    setConnNote(note(t('db.l.connect'), res));
     if (res.ok) {
       const body = parseJson<{ dialect: 'postgres' | 'mysql'; version: string; ms: number }>(res);
       if (body) setConnected({ dialect: body.dialect, version: body.version, ms: body.ms });
@@ -160,8 +164,8 @@ export default function Database({ active }: Readonly<{ active: boolean }>) {
 
   const createTable = async (e: FormEvent) => {
     e.preventDefault();
-    const res = await api('membuat tabel', 'POST', '/api/db/tables', { name: newName.trim(), columns: newCols.filter((c) => c.name.trim()) });
-    const outcome = note('buat tabel', res);
+    const res = await api('create', 'POST', '/api/db/tables', { name: newName.trim(), columns: newCols.filter((c) => c.name.trim()) });
+    const outcome = note(t('db.l.create'), res);
     setTableNote(outcome);
     if (!res.ok) return;
     const created = parseJson<{ created: string }>(res)?.created ?? '';
@@ -176,8 +180,8 @@ export default function Database({ active }: Readonly<{ active: boolean }>) {
   const saveRow = async () => {
     if (!selected) return;
     const filled = Object.fromEntries(Object.entries(newRow).filter(([, v]) => v !== ''));
-    const res = await api('menyimpan', 'POST', `/api/db/tables/${encodeURIComponent(selected)}`, { values: filled });
-    const outcome = note('simpan baris', res);
+    const res = await api('save', 'POST', `/api/db/tables/${encodeURIComponent(selected)}`, { values: filled });
+    const outcome = note(t('db.l.save'), res);
     if (res.ok) {
       setNewRow({});
       await loadRows(selected);
@@ -206,10 +210,10 @@ export default function Database({ active }: Readonly<{ active: boolean }>) {
 
   const formReady = Boolean(conn.host.trim() && conn.user.trim() && conn.database.trim());
   let why = '';
-  if (!data) why = 'Memeriksa status fitur…';
-  else if (!data.enabled || !data.tokenConfigured) why = 'Fitur belum aktif di server.';
-  else if (!token) why = 'Isi DB token.';
-  else if (!formReady && !data.envDefaults) why = 'Isi host, user, dan nama database.';
+  if (!data) why = t('db.why.checking');
+  else if (!data.enabled || !data.tokenConfigured) why = t('db.why.inactive');
+  else if (!token) why = t('db.why.token');
+  else if (!formReady && !data.envDefaults) why = t('db.why.fill');
   const blocked = why !== '' || busy !== null;
   const hasNewValues = Object.values(newRow).some((v) => v !== '');
   const editable = rows?.columns.filter((c) => c.name !== 'id') ?? [];
@@ -219,12 +223,12 @@ export default function Database({ active }: Readonly<{ active: boolean }>) {
     <div className="stack">
       {data && !data.enabled && (
         <div className="banner warn" role="status">
-          Fitur database nonaktif. Set <code>ENABLE_DB=true</code> dan <code>DB_TOKEN</code> di server untuk mengaktifkan.
+          <Rich text={t('db.off')} />
         </div>
       )}
       {data?.enabled && !data.tokenConfigured && (
         <div className="banner err" role="status">
-          <code>DB_TOKEN</code> belum di-set di server, semua aksi akan ditolak.
+          <Rich text={t('db.noToken')} />
         </div>
       )}
 
@@ -232,36 +236,34 @@ export default function Database({ active }: Readonly<{ active: boolean }>) {
         <div className="stack">
           <section className="card stack" aria-labelledby="db-h-conn" aria-busy={busy !== null}>
             <div className="row between">
-              <h2 id="db-h-conn">Koneksi</h2>
+              <h2 id="db-h-conn">{t('db.connection')}</h2>
               {connected && !editing && (
                 <button type="button" className="btn sm" onClick={() => setEditing(true)}>
-                  Ubah
+                  {t('db.edit')}
                 </button>
               )}
             </div>
 
             {connected && !editing ? (
               <div className="conn-chip" role="status">
-                <span className="pill ok">Terhubung</span>
+                <span className="pill ok">{t('db.connectedPill')}</span>
                 <span>
-                  {dialectName} {connected.version} · {connected.ms} ms
+                  {dialectName} {connected.version}, {connected.ms} ms
                 </span>
-                <span className="muted mono">
-                  {conn.host ? `${conn.user}@${conn.host}/${conn.database}` : 'default dari env server'}
-                </span>
+                <span className="muted mono">{conn.host ? `${conn.user}@${conn.host}/${conn.database}` : t('db.envDefault')}</span>
               </div>
             ) : (
               <form className="stack" onSubmit={connect}>
                 <div className="field-grid">
                   <label>
-                    Jenis
+                    {t('db.type')}
                     <select value={conn.type} onChange={(e) => set({ type: e.target.value as Remembered['type'] })}>
                       <option value="postgres">PostgreSQL</option>
                       <option value="mysql">MySQL</option>
                     </select>
                   </label>
                   <label>
-                    Port
+                    {t('db.port')}
                     <input
                       value={conn.port}
                       onChange={(e) => set({ port: e.target.value })}
@@ -271,15 +273,15 @@ export default function Database({ active }: Readonly<{ active: boolean }>) {
                     />
                   </label>
                   <label className="span-2">
-                    Host
+                    {t('db.host')}
                     <input value={conn.host} onChange={(e) => set({ host: e.target.value })} placeholder="localhost" autoComplete="off" spellCheck={false} />
                   </label>
                   <label>
-                    User
+                    {t('db.user')}
                     <input value={conn.user} onChange={(e) => set({ user: e.target.value })} autoComplete="off" spellCheck={false} />
                   </label>
                   <label>
-                    Password
+                    {t('db.password')}
                     <input
                       type="password"
                       value={password}
@@ -291,24 +293,24 @@ export default function Database({ active }: Readonly<{ active: boolean }>) {
                     />
                   </label>
                   <label className="span-2">
-                    Nama database
+                    {t('db.name')}
                     <input value={conn.database} onChange={(e) => set({ database: e.target.value })} autoComplete="off" spellCheck={false} />
                   </label>
                   <label className="span-2">
-                    DB token
+                    {t('db.token')}
                     <input type="password" autoComplete="new-password" value={token} onChange={(e) => setToken(e.target.value)} aria-describedby="db-token-hint" />
                     <span className="hint" id="db-token-hint">
-                      Sama dengan <code>DB_TOKEN</code> di server. Password dan token hanya di memori browser, tidak disimpan.
+                      <Rich text={t('db.tokenHint')} />
                     </span>
                   </label>
                 </div>
                 <div className="form-actions">
                   <button type="submit" className="btn primary" disabled={blocked} aria-describedby="db-why">
-                    {busy === 'menghubungkan' ? 'Menghubungkan…' : 'Hubungkan'}
+                    {busy === 'connect' ? t('db.connecting') : t('db.connect')}
                   </button>
                   {connected && (
                     <button type="button" className="btn" onClick={() => setEditing(false)}>
-                      Batal
+                      {t('common.cancel')}
                     </button>
                   )}
                   <span className="hint" id="db-why">
@@ -322,41 +324,63 @@ export default function Database({ active }: Readonly<{ active: boolean }>) {
 
           <section className="card stack" aria-labelledby="db-h-tables">
             <div className="row between">
-              <h2 id="db-h-tables">Tabel</h2>
+              <h2 id="db-h-tables">{t('db.tables')}</h2>
               <div className="row">
                 <button
                   type="button"
                   className="btn sm icon-btn"
-                  aria-label="Muat ulang daftar tabel"
-                  title="Muat ulang daftar tabel"
+                  aria-label={t('db.reloadTables')}
+                  title={t('db.reloadTables')}
                   disabled={blocked || !connected}
                   onClick={() => void loadTables()}
                 >
                   <Icon name="refresh" size={14} />
                 </button>
-                <button type="button" className="btn sm" disabled={blocked || !connected} onClick={() => { setMode('new'); setSelected(null); setTableNote(null); }}>
+                <button
+                  type="button"
+                  className="btn sm"
+                  disabled={blocked || !connected}
+                  onClick={() => {
+                    setMode('new');
+                    setSelected(null);
+                    setTableNote(null);
+                  }}
+                >
                   <Icon name="plus" size={14} />
-                  Tabel baru
+                  {t('db.newTable')}
                 </button>
               </div>
             </div>
-            {!connected && <p className="muted">Hubungkan ke database dulu untuk melihat tabel.</p>}
-            {connected && tables === null && <p className="muted">Memuat daftar tabel…</p>}
+            {!connected && <p className="muted">{t('db.connectFirst')}</p>}
+            {connected && tables === null && <p className="muted">{t('db.loadingTables')}</p>}
             {connected && tables?.length === 0 && (
               <div className="empty-frame">
-                <p>Belum ada tabel playground.</p>
-                <button type="button" className="btn sm" onClick={() => { setMode('new'); setSelected(null); }}>
-                  Buat tabel pertama
+                <p>{t('db.noTables')}</p>
+                <button
+                  type="button"
+                  className="btn sm"
+                  onClick={() => {
+                    setMode('new');
+                    setSelected(null);
+                  }}
+                >
+                  {t('db.firstTable')}
                 </button>
               </div>
             )}
             {tables && tables.length > 0 && (
-              <ul className="table-list" aria-label="Tabel playground">
-                {tables.map((t) => (
-                  <li key={t}>
-                    <button type="button" className="table-item" aria-current={mode === 'rows' && selected === t ? 'true' : undefined} onClick={() => void openTable(t)} disabled={busy !== null}>
+              <ul className="table-list" aria-label={t('db.tableListAria')}>
+                {tables.map((name) => (
+                  <li key={name}>
+                    <button
+                      type="button"
+                      className="table-item"
+                      aria-current={mode === 'rows' && selected === name ? 'true' : undefined}
+                      onClick={() => void openTable(name)}
+                      disabled={busy !== null}
+                    >
                       <Icon name="database" size={14} />
-                      <span className="mono">{t}</span>
+                      <span className="mono">{name}</span>
                     </button>
                   </li>
                 ))}
@@ -371,19 +395,29 @@ export default function Database({ active }: Readonly<{ active: boolean }>) {
           {mode === 'new' && (
             <form className="stack" onSubmit={createTable} aria-labelledby="db-h-new">
               <div>
-                <h2 id="db-h-new">Tabel baru</h2>
-                <p className="sub">Kolom id (auto increment) ditambahkan otomatis. Nama diberi awalan playground_ agar tabel lain tidak tersentuh.</p>
+                <h2 id="db-h-new">{t('db.newTable')}</h2>
+                <p className="sub">
+                  <Rich text={t('db.newSub')} />
+                </p>
               </div>
-              <div className="chips" aria-label="Contoh siap pakai">
-                <span className="muted">Contoh:</span>
+              <div className="chips" aria-label={t('db.examplesAria')}>
+                <span className="muted">{t('db.examples')}</span>
                 {PRESETS.map((p) => (
-                  <button key={p.name} type="button" className="chip" onClick={() => { setNewName(p.name); setNewCols(p.cols); }}>
+                  <button
+                    key={p.name}
+                    type="button"
+                    className="chip"
+                    onClick={() => {
+                      setNewName(p.name);
+                      setNewCols(p.cols);
+                    }}
+                  >
                     {p.name}
                   </button>
                 ))}
               </div>
               <label>
-                Nama tabel
+                {t('db.tableName')}
                 <span className="input-prefix">
                   <span aria-hidden="true">playground_</span>
                   <input
@@ -391,40 +425,40 @@ export default function Database({ active }: Readonly<{ active: boolean }>) {
                     onChange={(e) => setNewName(e.target.value.toLowerCase())}
                     placeholder="notes"
                     pattern={IDENT}
-                    title="Huruf kecil, angka, dan garis bawah; diawali huruf"
+                    title={t('db.identTitle')}
                     autoComplete="off"
                     spellCheck={false}
-                    aria-label="Nama tabel, setelah awalan playground_"
+                    aria-label={t('db.tableNameAria')}
                   />
                 </span>
               </label>
               <fieldset className="cols-set">
-                <legend>Kolom</legend>
+                <legend>{t('db.columns')}</legend>
                 {newCols.map((col, i) => (
                   // eslint-disable-next-line react/no-array-index-key -- daftar kolom pendek, tanpa id stabil
                   <div className="row nowrap" key={i}>
                     <input
                       id={`db-col-${i}`}
                       className="field-grow"
-                      aria-label={`Nama kolom ${i + 1}`}
+                      aria-label={t('db.colName', { n: i + 1 })}
                       value={col.name}
-                      placeholder="nama_kolom"
+                      placeholder={t('db.colNamePh')}
                       pattern={IDENT}
-                      title="Huruf kecil, angka, dan garis bawah; diawali huruf"
+                      title={t('db.identTitle')}
                       autoComplete="off"
                       spellCheck={false}
                       onChange={(e) => setCol(i, { name: e.target.value.toLowerCase() })}
                       onKeyDown={(e) => onColKey(e, i)}
                     />
-                    <select className="select-type" aria-label={`Tipe kolom ${i + 1}`} value={col.type} onChange={(e) => setCol(i, { type: e.target.value })}>
-                      {TYPES.map((t) => (
-                        <option key={t}>{t}</option>
+                    <select className="select-type" aria-label={t('db.colType', { n: i + 1 })} value={col.type} onChange={(e) => setCol(i, { type: e.target.value })}>
+                      {TYPES.map((type) => (
+                        <option key={type}>{type}</option>
                       ))}
                     </select>
                     <button
                       type="button"
                       className="btn sm icon-btn"
-                      aria-label={`Hapus kolom ${i + 1}`}
+                      aria-label={t('db.delCol', { n: i + 1 })}
                       disabled={newCols.length === 1}
                       onClick={() => setNewCols(newCols.filter((_, j) => j !== i))}
                     >
@@ -432,19 +466,27 @@ export default function Database({ active }: Readonly<{ active: boolean }>) {
                     </button>
                   </div>
                 ))}
-                <button type="button" className="btn sm" disabled={newCols.length >= MAX_COLUMNS} onClick={() => { setNewCols([...newCols, { name: '', type: 'text' }]); setFocusCol(newCols.length); }}>
+                <button
+                  type="button"
+                  className="btn sm"
+                  disabled={newCols.length >= MAX_COLUMNS}
+                  onClick={() => {
+                    setNewCols([...newCols, { name: '', type: 'text' }]);
+                    setFocusCol(newCols.length);
+                  }}
+                >
                   <Icon name="plus" size={14} />
-                  Tambah kolom
+                  {t('db.addCol')}
                 </button>
-                <span className="hint">Tekan Enter di nama kolom untuk menambah kolom berikutnya.</span>
+                <span className="hint">{t('db.colHint')}</span>
               </fieldset>
               <div className="form-actions">
                 <button type="submit" className="btn primary" disabled={blocked || !newName.trim() || !newCols.some((c) => c.name.trim())}>
-                  {busy === 'membuat tabel' ? 'Membuat…' : 'Buat tabel'}
+                  {busy === 'create' ? t('db.creating') : t('db.create')}
                 </button>
                 {tables && tables.length > 0 && (
                   <button type="button" className="btn" onClick={() => setMode('rows')}>
-                    Batal
+                    {t('common.cancel')}
                   </button>
                 )}
               </div>
@@ -458,16 +500,14 @@ export default function Database({ active }: Readonly<{ active: boolean }>) {
                   <h2>
                     <code>{rows.table}</code>
                   </h2>
-                  <p className="sub">
-                    {rows.rows.length} baris terbaru (maks. 50). Isi baris paling atas lalu tekan Enter untuk menyimpan, Esc untuk mengosongkan.
-                  </p>
+                  <p className="sub">{t(rows.rows.length === 1 ? 'db.rowsSub.1' : 'db.rowsSub', { n: rows.rows.length })}</p>
                 </div>
                 <button type="button" className="btn sm" disabled={blocked} onClick={() => void loadRows(selected)}>
                   <Icon name="refresh" size={14} />
-                  Muat ulang
+                  {t('db.reload')}
                 </button>
               </div>
-              <div className="scroll-x" tabIndex={0} role="region" aria-label={`Isi tabel ${rows.table}`}>
+              <div className="scroll-x" tabIndex={0} role="region" aria-label={t('db.gridAria', { table: rows.table })}>
                 <table className="kv data-grid">
                   <thead>
                     <tr>
@@ -478,7 +518,7 @@ export default function Database({ active }: Readonly<{ active: boolean }>) {
                         </th>
                       ))}
                       <th scope="col">
-                        <span className="sr-only">Aksi</span>
+                        <span className="sr-only">{t('db.actions')}</span>
                       </th>
                     </tr>
                   </thead>
@@ -488,21 +528,21 @@ export default function Database({ active }: Readonly<{ active: boolean }>) {
                         if (c.name === 'id') {
                           return (
                             <td key={c.name} className="muted">
-                              baru
+                              {t('db.newRow')}
                             </td>
                           );
                         }
                         const kind = kindOf(c.type);
                         const common = {
                           id: `db-new-${i - 1}`,
-                          'aria-label': `${c.name} untuk baris baru`,
+                          'aria-label': t('db.cellAria', { col: c.name }),
                           value: newRow[c.name] ?? '',
                         };
                         return (
                           <td key={c.name}>
                             {kind === 'bool' ? (
                               <select {...common} onChange={(e) => setNewRow({ ...newRow, [c.name]: e.target.value })}>
-                                <option value="">(kosong)</option>
+                                <option value="">{t('db.blank')}</option>
                                 <option value="true">true</option>
                                 <option value="false">false</option>
                               </select>
@@ -521,7 +561,7 @@ export default function Database({ active }: Readonly<{ active: boolean }>) {
                       })}
                       <td>
                         <button type="button" className="btn sm primary" disabled={blocked || !hasNewValues || editable.length === 0} onClick={() => void saveRow()}>
-                          {busy === 'menyimpan' ? 'Menyimpan…' : 'Simpan'}
+                          {busy === 'save' ? t('db.saving') : t('db.save')}
                         </button>
                       </td>
                     </tr>
@@ -538,33 +578,35 @@ export default function Database({ active }: Readonly<{ active: boolean }>) {
                   </tbody>
                 </table>
               </div>
-              {rows.rows.length === 0 && <p className="muted empty">Tabel masih kosong. Isi baris paling atas dan tekan Enter untuk menambah data pertama.</p>}
+              {rows.rows.length === 0 && <p className="muted empty">{t('db.emptyTable')}</p>}
             </>
           )}
 
           {mode === 'rows' && !rows && (
             connected ? (
               <div className="empty-frame">
-                <p>Pilih tabel di sebelah kiri untuk melihat isinya, atau buat tabel baru.</p>
+                <p>{t('db.pick')}</p>
               </div>
             ) : (
               <div className="stack guide">
                 <div>
-                  <h2>Mulai di sini</h2>
-                  <p className="sub">Tiga langkah, semuanya dari halaman ini. Tidak perlu mengubah file .env.</p>
+                  <h2>{t('db.guideTitle')}</h2>
+                  <p className="sub">{t('db.guideSub')}</p>
                 </div>
                 <ol>
                   <li>
-                    <strong>Hubungkan.</strong> Isi jenis, host, user, password, nama database, dan DB token di kolom kiri, lalu tekan Hubungkan.
+                    <Rich text={t('db.step1')} />
                   </li>
                   <li>
-                    <strong>Pilih atau buat tabel.</strong> Setelah terhubung, tabel playground tampil di kiri. Tabel baru tersedia dengan contoh siap pakai.
+                    <Rich text={t('db.step2')} />
                   </li>
                   <li>
-                    <strong>Isi data.</strong> Isi baris paling atas pada tabel lalu tekan Enter; baris langsung muncul di daftar.
+                    <Rich text={t('db.step3')} />
                   </li>
                 </ol>
-                <p className="hint">Gunakan database tes. Semua tabel dibuat dengan awalan playground_ agar tabel aplikasi lain tidak tersentuh.</p>
+                <p className="hint">
+                  <Rich text={t('db.guideNote')} />
+                </p>
               </div>
             )
           )}

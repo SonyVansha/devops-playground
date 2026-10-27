@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '../../i18n/client';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 const DEFAULT_BASE = 'http://localhost:3000';
@@ -58,6 +59,7 @@ export function BaseUrlProvider({ children }: Readonly<{ children: ReactNode }>)
 }
 
 export function BaseUrlBar() {
+  const t = useT();
   const { base, setBase, reset } = useBaseUrl();
   return (
     <div className="baseurl">
@@ -66,10 +68,10 @@ export function BaseUrlBar() {
         <input value={base} onChange={(e) => setBase(e.target.value.trim())} spellCheck={false} aria-describedby="baseurl-help" />
       </label>
       <button type="button" className="btn sm" onClick={reset}>
-        Reset
+        {t('docs.base.reset')}
       </button>
       <p id="baseurl-help" className="hint">
-        Dipakai di semua contoh perintah di halaman ini.
+        {t('docs.base.help')}
       </p>
     </div>
   );

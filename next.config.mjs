@@ -5,6 +5,8 @@ const nextConfig = {
   output: 'standalone',
   poweredByHeader: false,
   reactStrictMode: true,
+  // Indikator "N" hanya muncul di next dev; pindahkan dari kiri-bawah agar tidak menutupi tombol tema dan bahasa di sidebar.
+  devIndicators: { position: 'bottom-right' },
   // App ini tidak memakai next/image: matikan optimizer dan buang sharp/libvips (~37 MB) dari output standalone.
   images: { unoptimized: true },
   outputFileTracingExcludes: {

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useT } from '../../i18n/client';
 import { useBaseUrl } from './BaseUrl';
 
 export function fillBase(code: string, base: string): string {
@@ -8,6 +9,7 @@ export function fillBase(code: string, base: string): string {
 }
 
 export default function CodeBlock({ code, title }: Readonly<{ code: string; title?: string }>) {
+  const t = useT();
   const { base } = useBaseUrl();
   const [copied, setCopied] = useState(false);
   const text = fillBase(code, base);
@@ -25,9 +27,9 @@ export default function CodeBlock({ code, title }: Readonly<{ code: string; titl
   return (
     <figure className="codeblock">
       <figcaption>
-        <span className="muted">{title ?? 'shell'}</span>
+        <span className="muted">{title ?? t('docs.code.default')}</span>
         <button type="button" className="btn sm" onClick={copy}>
-          {copied ? 'Tersalin' : 'Salin'}
+          {copied ? t('common.copied') : t('common.copy')}
         </button>
       </figcaption>
       <pre tabIndex={0}>

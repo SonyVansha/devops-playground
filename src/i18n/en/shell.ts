@@ -1,0 +1,21 @@
+// Kerangka, tema, bahasa, dan kata umum.
+export const shell = {
+  'meta.title': 'DevOps Playground',
+  'meta.description': 'Dummy workload for testing Kubernetes, ingress, API gateways, and rollouts',
+  'meta.docs.title': 'Documentation | DevOps Playground',
+  'meta.docs.description': 'Guides for using and verifying the dummy workload in Kubernetes, gateway, and rollout scenarios',
+  'shell.skip': 'Skip to content',
+  'shell.openMenu': 'Open menu',
+  'shell.closeMenu': 'Close menu',
+  'shell.mainNav': 'Main navigation',
+  'shell.brandAria': 'DevOps Playground, go to the dashboard',
+  'theme.label': 'Dark theme',
+  'theme.toLight': 'Switch to the light theme',
+  'theme.toDark': 'Switch to the dark theme',
+  'lang.label': 'Language',
+  'lang.en': 'English',
+  'lang.id': 'Bahasa Indonesia',
+  'common.copy': 'Copy',
+  'common.copied': 'Copied',
+  'common.cancel': 'Cancel',
+} as const;

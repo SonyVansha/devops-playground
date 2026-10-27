@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useT } from '../../i18n/client';
 import type { Heading } from '../../docs/headings';
 
 // Daftar isi "Di halaman ini" dengan penanda bagian yang sedang dibaca (IntersectionObserver).
 export default function Toc({ headings }: Readonly<{ headings: Heading[] }>) {
+  const t = useT();
   const [active, setActive] = useState<string | null>(headings[0]?.id ?? null);
 
   useEffect(() => {
@@ -34,8 +36,8 @@ export default function Toc({ headings }: Readonly<{ headings: Heading[] }>) {
 
   if (headings.length < 2) return null;
   return (
-    <nav className="toc" aria-label="Di halaman ini">
-      <h2>Di halaman ini</h2>
+    <nav className="toc" aria-label={t('docs.toc')}>
+      <h2>{t('docs.toc')}</h2>
       <ul>
         {headings.map((h) => (
           <li key={h.id}>

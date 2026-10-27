@@ -1,29 +1,32 @@
 import Link from 'next/link';
 import DocsSearch from '../../components/docs/DocsSearch';
-import { GROUPS } from '../../docs/index';
+import Rich from '../../components/Rich';
+import { groupsFor } from '../../docs/index';
+import { translator } from '../../i18n/index';
+import { getLang } from '../../i18n/server';
 
-export default function DocsIndex() {
+export default async function DocsIndex() {
+  const lang = await getLang();
+  const t = translator(lang);
   return (
     <div>
       <header className="docs-hero">
-        <h1>Dokumentasi</h1>
+        <h1>{t('docs.hero.title')}</h1>
         <p>
-          Cara memakai app ini sebagai workload dummy, dan cara memastikan hasilnya benar. Setiap topik punya bagian <strong>Verifikasi</strong>:
-          perintah yang bisa langsung dijalankan beserta hasil yang seharusnya muncul.
+          <Rich text={t('docs.hero.lead')} />
         </p>
         <p className="quick">
-          Baru pertama kali? <Link href="/docs/mulai-cepat">Mulai cepat</Link>. Ada yang tidak sesuai harapan?{' '}
-          <Link href="/docs/troubleshooting">Troubleshooting</Link>.
+          {t('docs.hero.new')} <Link href="/docs/mulai-cepat">{t('docs.hero.start')}</Link>. {t('docs.hero.problem')}{' '}
+          <Link href="/docs/troubleshooting">{t('docs.hero.trouble')}</Link>.
         </p>
       </header>
 
       <aside className="callout warn" role="note" style={{ marginTop: 24 }}>
-        <span className="callout-label">Status pengujian</span>
-        Perilaku level aplikasi sudah diuji di container. Langkah yang membutuhkan cluster (Kubernetes, Envoy Gateway, Kong, Argo Rollouts) belum diuji di cluster
-        sungguhan: jalankan dengan <code>--dry-run=server</code> dulu dan sesuaikan dengan lingkunganmu.
+        <span className="callout-label">{t('docs.status.label')}</span>
+        <Rich text={t('docs.status.body')} />
       </aside>
 
-      <DocsSearch groups={GROUPS.map((g) => ({ name: g.name, docs: g.docs.map((d) => ({ slug: d.slug, title: d.title, summary: d.summary })) }))} />
+      <DocsSearch groups={groupsFor(lang).map((g) => ({ name: g.name, docs: g.docs.map((d) => ({ slug: d.slug, title: d.title, summary: d.summary })) }))} />
     </div>
   );
 }

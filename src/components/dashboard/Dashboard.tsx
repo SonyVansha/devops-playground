@@ -3,11 +3,15 @@
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { useI18n } from '../../i18n/client';
+import type { MsgKey } from '../../i18n/en';
 import { Icon, type IconName } from '../shell/Icons';
 import Shell from '../shell/Shell';
 import type { InfoData } from './api';
+import { pushSample, type Sample } from './history';
 import { usePoll } from './hooks';
 import Overview from './Overview';
+import { clock, describe } from './status';
 
 // Tampilan selain Ringkasan dimuat saat pertama dibuka, jadi kunjungan ke "/" tidak mengunduh kode Chaos, Database, dan katalog.
 const Catalog = dynamic(() => import('./Catalog'));
@@ -16,11 +20,11 @@ const Database = dynamic(() => import('./Database'));
 
 type ViewId = 'overview' | 'catalog' | 'chaos' | 'database';
 
-const VIEWS: ReadonlyArray<{ id: ViewId; label: string; icon: IconName; sub: string }> = [
-  { id: 'overview', label: 'Ringkasan', icon: 'overview', sub: '' },
-  { id: 'catalog', label: 'Skenario & endpoint', icon: 'catalog', sub: 'Cari endpoint, jalankan, dan lihat hasilnya langsung.' },
-  { id: 'chaos', label: 'Fault injection', icon: 'chaos', sub: 'Picu gangguan saat runtime tanpa redeploy, lalu pulihkan.' },
-  { id: 'database', label: 'Database', icon: 'database', sub: 'Hubungkan ke PostgreSQL atau MySQL, buat tabel, dan isi data.' },
+const VIEWS: ReadonlyArray<{ id: ViewId; label: MsgKey; icon: IconName; sub: MsgKey | null }> = [
+  { id: 'overview', label: 'view.overview', icon: 'overview', sub: null },
+  { id: 'catalog', label: 'view.catalog', icon: 'catalog', sub: 'view.catalog.sub' },
+  { id: 'chaos', label: 'view.chaos', icon: 'chaos', sub: 'view.chaos.sub' },
+  { id: 'database', label: 'view.database', icon: 'database', sub: 'view.database.sub' },
 ];
 
 function viewFromHash(): ViewId {
@@ -28,26 +32,27 @@ function viewFromHash(): ViewId {
   return VIEWS.find((v) => v.id === id)?.id ?? 'overview';
 }
 
-function clock(ms: number | null): string {
-  return ms === null ? '' : new Date(ms).toLocaleTimeString('id-ID', { hour12: false });
+function sampleOf(t: number, info: InfoData | null, up: boolean): Sample {
+  return {
+    t,
+    up,
+    started: info?.started ?? false,
+    healthy: info?.healthy ?? false,
+    ready: info?.ready ?? false,
+    draining: info?.draining ?? false,
+    uptime: info?.uptimeSeconds ?? 0,
+    cpu: info?.load?.cpuWorkers ?? 0,
+    held: info?.load?.heldMb ?? 0,
+  };
 }
 
-// Satu kalimat temuan untuk Ringkasan: hal terpenting dari data saat ini.
-function finding(info: InfoData | null, reachable: boolean, lastOk: number | null): string {
-  if (!info) return reachable ? 'Memuat identitas instance…' : 'Menghubungi instance…';
-  if (!reachable) return `Instance tidak terjangkau. Data terakhir diambil pukul ${clock(lastOk)}.`;
-  if (info.draining) return 'Pod sedang draining: readiness 503, tidak menerima traffic baru.';
-  if (!info.started) return 'Pod belum selesai start: startup probe masih 503.';
-  if (!info.healthy) return 'Liveness gagal: kubelet akan me-restart container ini.';
-  if (!info.ready) return 'Pod belum ready: dikeluarkan dari Endpoints sampai kembali sehat.';
-  return `Pod ${info.podName ?? info.hostname ?? '—'} sehat dan menerima traffic, versi ${info.appVersion}.`;
-}
+export default function Dashboard({ initialInfo }: Readonly<{ initialInfo: InfoData }>) {
+  const { t, locale } = useI18n();
 
-export default function Dashboard() {
   // Tampilan aktif disimpan di URL (#database) agar refresh dan link yang dibagikan membuka tampilan yang sama.
-  // null = belum dibaca dari URL: panel disembunyikan dulu supaya tidak sempat memuat Ringkasan lalu pindah.
-  const [view, setView] = useState<ViewId | null>(null);
-  const [seen, setSeen] = useState<ReadonlySet<ViewId>>(new Set());
+  // Cetakan pertama selalu Ringkasan (server tidak tahu #hash); skrip kecil di <head> menyembunyikannya bila URL menuju tampilan lain.
+  const [view, setView] = useState<ViewId>('overview');
+  const [seen, setSeen] = useState<ReadonlySet<ViewId>>(new Set<ViewId>(['overview']));
 
   useEffect(() => {
     const sync = () => setView(viewFromHash());
@@ -57,7 +62,8 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    if (view) setSeen((prev) => (prev.has(view) ? prev : new Set(prev).add(view)));
+    setSeen((prev) => (prev.has(view) ? prev : new Set(prev).add(view)));
+    document.documentElement.dataset.view = view; // dipakai CSS agar Ringkasan tidak sempat terlihat saat membuka #database dst.
   }, [view]);
 
   const select = (id: ViewId) => {
@@ -66,19 +72,30 @@ export default function Dashboard() {
     window.scrollTo({ top: 0 });
   };
 
-  const { data: info, status, updatedAt, lastOkAt, refresh } = usePoll<InfoData>('/api/info', 5000, true);
+  const { data: info, status, updatedAt, lastOkAt, refresh } = usePoll<InfoData>('/api/info', 5000, true, { data: initialInfo, at: Date.parse(initialInfo.time) });
   const reachable = status === 200;
+
+  // Setiap polling selesai menambah satu pembacaan ke pita detak (5 menit terakhir, hanya di memori halaman).
+  const [samples, setSamples] = useState<readonly Sample[]>(() => [sampleOf(Date.parse(initialInfo.time), initialInfo, true)]);
+  useEffect(() => {
+    if (updatedAt === null) return;
+    setSamples((prev) => pushSample(prev, sampleOf(updatedAt, info, status === 200)));
+    // hanya bereaksi pada pembacaan baru
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [updatedAt]);
+
   const current = VIEWS.find((v) => v.id === view) ?? VIEWS[0];
   const pod = info?.podName ?? info?.hostname ?? null;
-  const online = reachable ? 'Online' : updatedAt === null ? 'sedang diperiksa' : 'tidak terjangkau';
+  const online = reachable ? t('scope.sr.online') : updatedAt === null ? t('scope.sr.checking') : t('scope.sr.offline');
+  const state = reachable ? 'ok' : updatedAt === null ? '' : 'err';
 
   const scope = (
-    <div className="scope-block" title="Pod yang sedang dilihat">
-      <span className={`dot ${reachable ? 'ok' : updatedAt === null ? '' : 'err'}`} aria-hidden="true" />
+    <div className="scope-block" title={t('scope.hint')}>
+      <span className={`dot ${state}`} aria-hidden="true" />
       <div className="scope-text">
-        <span className="scope-title mono">{pod ?? 'Instance'}</span>
+        <span className="scope-title mono">{pod ?? t('scope.instance')}</span>
         <span className="scope-sub">
-          {info ? (info.namespace ?? 'namespace tidak tersedia') : 'Memeriksa…'}
+          {info ? (info.namespace ?? t('scope.noNamespace')) : t('scope.checking')}
           <span className="sr-only"> ({online})</span>
         </span>
       </div>
@@ -86,7 +103,7 @@ export default function Dashboard() {
   );
 
   const nav = (
-    <nav aria-label="Tampilan dashboard" className="nav-list">
+    <nav aria-label={t('nav.label')} className="nav-list">
       {VIEWS.map((v) => (
         <a
           key={v.id}
@@ -100,7 +117,7 @@ export default function Dashboard() {
           }}
         >
           <Icon name={v.icon} />
-          {v.label}
+          {t(v.label)}
         </a>
       ))}
     </nav>
@@ -109,49 +126,63 @@ export default function Dashboard() {
   const footerNav = (
     <Link href="/docs" prefetch={false} className="nav-item">
       <Icon name="docs" />
-      Dokumentasi
+      {t('nav.docs')}
     </Link>
   );
 
   return (
-    <Shell nav={nav} scope={scope} footerNav={footerNav} meta={info ? `Versi ${info.appVersion}` : undefined} title={current.label}>
+    <Shell nav={nav} scope={scope} footerNav={footerNav} meta={info ? t('nav.version', { v: info.appVersion }) : undefined} title={t(current.label)}>
       <main className="canvas">
         <div className="title-row">
           <div>
-            <h1>{current.label}</h1>
+            <h1>{t(current.label)}</h1>
             <p className="sub-line" aria-live="polite">
-              {view === 'overview' || view === null ? finding(info, reachable, lastOkAt) : current.sub}
+              {view === 'overview' ? '' : current.sub ? t(current.sub) : ''}
             </p>
           </div>
-          <div className="title-status" role="status" aria-label="Status instance">
-            <span className={`pill ${reachable ? 'ok' : updatedAt === null ? '' : 'err'}`}>
-              {reachable ? 'Online' : updatedAt === null ? 'Memeriksa' : 'Tidak terjangkau'}
-            </span>
-            {info && reachable && view !== 'overview' && view !== null && (
+          <div className="title-status" role="status" aria-label={t('head.status')}>
+            <span className={`pill ${state}`}>{reachable ? t('pill.online') : updatedAt === null ? t('pill.checking') : t('pill.unreachable')}</span>
+            {info && reachable && view !== 'overview' && (
               <>
-                <span className={`pill ${info.ready ? 'ok' : 'err'}`}>{info.ready ? 'Ready' : 'Not ready'}</span>
-                <span className={`pill ${info.healthy ? 'ok' : 'err'}`}>{info.healthy ? 'Healthy' : 'Unhealthy'}</span>
+                <span className={`pill ${info.ready ? 'ok' : 'err'}`}>{info.ready ? t('pill.ready') : t('pill.notReady')}</span>
+                <span className={`pill ${info.healthy ? 'ok' : 'err'}`}>{info.healthy ? t('pill.healthy') : t('pill.unhealthy')}</span>
               </>
             )}
-            {info?.draining && <span className="pill warn">Draining</span>}
+            {info?.draining && <span className="pill warn">{t('pill.draining')}</span>}
             <button type="button" className="btn sm" onClick={() => void refresh()}>
               <Icon name="refresh" size={14} />
-              Muat ulang
+              {t('head.refresh')}
             </button>
-            {updatedAt !== null && <span className="stamp">Diperbarui {clock(updatedAt)}</span>}
+            {updatedAt !== null && <span className="stamp" suppressHydrationWarning>{t('head.updated', { time: clock(updatedAt, locale) })}</span>}
           </div>
         </div>
 
         <div id="panel-overview" hidden={view !== 'overview'}>
           {seen.has('overview') && (
-            <Overview info={info} reachable={reachable} updatedAt={updatedAt} lastOkAt={lastOkAt} onRetry={() => void refresh()} active={view === 'overview'} />
+            <Overview
+              info={info}
+              reachable={reachable}
+              updatedAt={updatedAt}
+              lastOkAt={lastOkAt}
+              samples={samples}
+              onRetry={() => void refresh()}
+              active={view === 'overview'}
+            />
           )}
         </div>
         <div id="panel-catalog" hidden={view !== 'catalog'}>
           {seen.has('catalog') && <Catalog />}
         </div>
         <div id="panel-chaos" hidden={view !== 'chaos'}>
-          {seen.has('chaos') && <Chaos active={view === 'chaos'} podName={pod} />}
+          {seen.has('chaos') && (
+            <Chaos
+              active={view === 'chaos'}
+              podName={pod}
+              samples={samples}
+              status={describe(info, reachable, lastOkAt, t, locale)}
+              onChange={() => void refresh()}
+            />
+          )}
         </div>
         <div id="panel-database" hidden={view !== 'database'}>
           {seen.has('database') && <Database active={view === 'database'} />}

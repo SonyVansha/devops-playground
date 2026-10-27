@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import Mark from '../Mark';
+import { useT } from '../../i18n/client';
+import LangToggle from '../LangToggle';
 import ThemeToggle from '../ThemeToggle';
 import { Icon } from './Icons';
 
@@ -24,6 +26,7 @@ interface ShellProps {
 // Kerangka satu untuk semua halaman: sidebar di atas ground, konten di "lembar" putih.
 // Di ponsel sidebar menjadi laci; Esc menutup, fokus kembali ke tombol menu.
 export default function Shell({ nav, title, scope, footerNav, meta, children }: Readonly<ShellProps>) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
   const sidebar = useRef<HTMLElement>(null);
@@ -64,7 +67,7 @@ export default function Shell({ nav, title, scope, footerNav, meta, children }: 
           ref={menuButton}
           type="button"
           className="btn icon-btn"
-          aria-label="Buka menu"
+          aria-label={t('shell.openMenu')}
           aria-expanded={open}
           aria-controls="sidebar"
           onClick={() => setOpen(true)}
@@ -74,15 +77,15 @@ export default function Shell({ nav, title, scope, footerNav, meta, children }: 
         <span className="mobilebar-title">{title}</span>
       </header>
 
-      {open && <button type="button" className="scrim" aria-label="Tutup menu" tabIndex={-1} onClick={close} />}
+      {open && <button type="button" className="scrim" aria-label={t('shell.closeMenu')} tabIndex={-1} onClick={close} />}
 
-      <aside id="sidebar" ref={sidebar} className={`sidebar${open ? ' open' : ''}`} aria-label="Navigasi utama">
+      <aside id="sidebar" ref={sidebar} className={`sidebar${open ? ' open' : ''}`} aria-label={t('shell.mainNav')}>
         <div className="sidebar-head">
-          <Link href="/" className="brand" aria-label="DevOps Playground, ke dashboard">
+          <Link href="/" className="brand" aria-label={t('shell.brandAria')}>
             <Mark />
             <span>DevOps Playground</span>
           </Link>
-          <button type="button" className="btn icon-btn sidebar-close" aria-label="Tutup menu" onClick={close}>
+          <button type="button" className="btn icon-btn sidebar-close" aria-label={t('shell.closeMenu')} onClick={close}>
             <Icon name="close" />
           </button>
         </div>
@@ -93,7 +96,10 @@ export default function Shell({ nav, title, scope, footerNav, meta, children }: 
         <div className="sidebar-foot" onClick={closeOnLink}>
           {footerNav}
           <div className="sidebar-meta">
-            <ThemeToggle />
+            <div className="row" style={{ gap: 6 }}>
+              <ThemeToggle />
+              <LangToggle />
+            </div>
             {meta && <span className="muted">{meta}</span>}
           </div>
         </div>

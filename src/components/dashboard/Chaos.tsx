@@ -1,9 +1,14 @@
 'use client';
 
 import { useState } from 'react';
+import { useI18n } from '../../i18n/client';
+import Rich from '../Rich';
 import { call } from './api';
+import type { Sample } from './history';
 import { usePoll, useRemembered } from './hooks';
 import { summarize, type Outcome } from './outcome';
+import Pulse, { CHAOS_ROWS } from './Pulse';
+import type { Status } from './status';
 import { ResultNote } from './ui';
 
 interface ChaosStatus {
@@ -18,7 +23,17 @@ interface ChaosStatus {
 
 type Card = 'cpu' | 'probe' | 'mem' | 'crash' | 'restore';
 
-export default function Chaos({ active, podName }: Readonly<{ active: boolean; podName: string | null }>) {
+interface ChaosProps {
+  active: boolean;
+  podName: string | null;
+  samples: readonly Sample[];
+  status: Status;
+  /** Dipanggil setelah sebuah aksi, agar pita langsung membaca keadaan baru tanpa menunggu polling berikutnya. */
+  onChange: () => void;
+}
+
+export default function Chaos({ active, podName, samples, status, onChange }: Readonly<ChaosProps>) {
+  const { t } = useI18n();
   const { data, refresh } = usePoll<ChaosStatus>('/api/chaos', 4000, active);
   // Hanya target pod yang diingat. Token tidak pernah disimpan.
   const [saved, setSaved] = useRemembered('chaos', { pod: '' });
@@ -31,6 +46,7 @@ export default function Chaos({ active, podName }: Readonly<{ active: boolean; p
   const [results, setResults] = useState<Partial<Record<Card, Outcome>>>({});
 
   const target = saved.pod.trim();
+  const tokenName = 'Chaos token';
 
   const send = async (method: string, path: string) => {
     const sep = path.includes('?') ? '&' : '?';
@@ -41,47 +57,49 @@ export default function Chaos({ active, podName }: Readonly<{ active: boolean; p
   const fire = async (card: Card, label: string, method: string, path: string, okText: string) => {
     setBusy(card);
     const res = await send(method, path);
-    setResults((r) => ({ ...r, [card]: summarize(label, res, { token: 'Chaos token', ok: okText }) }));
+    setResults((r) => ({ ...r, [card]: summarize(label, res, t, { token: tokenName, ok: okText }) }));
     setBusy(null);
     void refresh();
+    onChange();
   };
 
   // Mengembalikan semua gangguan yang sedang aktif: readiness, liveness, dan memori yang ditahan.
   const restoreAll = async () => {
     setBusy('restore');
     const steps: Array<[string, string, string]> = [];
-    if (data && !data.ready) steps.push(['POST', '/api/chaos/notready', 'readiness']);
-    if (data && !data.healthy) steps.push(['POST', '/api/chaos/unhealthy', 'liveness']);
-    if (data && data.heldMb > 0) steps.push(['DELETE', '/api/chaos/mem', 'memori']);
+    if (data && !data.ready) steps.push(['POST', '/api/chaos/notready', t('chaos.n.ready')]);
+    if (data && !data.healthy) steps.push(['POST', '/api/chaos/unhealthy', t('chaos.n.live')]);
+    if (data && data.heldMb > 0) steps.push(['DELETE', '/api/chaos/mem', t('chaos.n.mem')]);
     let last: Outcome | null = null;
     const done: string[] = [];
     for (const [method, path, name] of steps) {
       const res = await send(method, path);
-      last = summarize('pulihkan semua', res, { token: 'Chaos token' });
+      last = summarize(t('chaos.l.restore'), res, t, { token: tokenName });
       if (last.tone === 'err') break;
       done.push(name);
     }
     const final = last;
-    if (final) setResults((r) => ({ ...r, restore: final.tone === 'ok' ? { ...final, text: `Dipulihkan: ${done.join(', ')}.` } : final }));
+    if (final) setResults((r) => ({ ...r, restore: final.tone === 'ok' ? { ...final, text: t('chaos.restored', { list: done.join(', ') }) } : final }));
     setBusy(null);
     void refresh();
+    onChange();
   };
 
   let why = '';
-  if (!data) why = 'Memeriksa status chaos…';
-  else if (!data.enabled) why = 'Chaos nonaktif di server.';
-  else if (!data.tokenConfigured) why = 'CHAOS_TOKEN belum di-set di server.';
-  else if (!token) why = 'Isi chaos token dulu.';
+  if (!data) why = t('chaos.why.checking');
+  else if (!data.enabled) why = t('chaos.why.disabled');
+  else if (!data.tokenConfigured) why = t('chaos.why.noToken');
+  else if (!token) why = t('chaos.why.enterToken');
   const blocked = why !== '' || busy !== null;
 
   const effects: string[] = [];
-  if (data && !data.ready) effects.push('Readiness dimatikan');
-  if (data && !data.healthy) effects.push('Liveness dimatikan');
-  if (data && data.cpuWorkers > 0) effects.push(`CPU: ${data.cpuWorkers} worker`);
-  if (data && data.heldMb > 0) effects.push(`Memori ditahan: ${data.heldMb} MB`);
+  if (data && !data.ready) effects.push(t('chaos.fx.ready'));
+  if (data && !data.healthy) effects.push(t('chaos.fx.live'));
+  if (data && data.cpuWorkers > 0) effects.push(t(data.cpuWorkers === 1 ? 'chaos.fx.cpu.1' : 'chaos.fx.cpu', { n: data.cpuWorkers }));
+  if (data && data.heldMb > 0) effects.push(t('chaos.fx.mem', { mb: data.heldMb }));
   const nothingToRestore = !data || (data.ready && data.healthy && data.heldMb === 0);
 
-  const crashTarget = target || data?.pod || podName || 'ini';
+  const crashTarget = target || data?.pod || podName || t('chaos.crashThis');
   const ready = data?.ready ?? true;
   const healthy = data?.healthy ?? true;
 
@@ -89,179 +107,203 @@ export default function Chaos({ active, podName }: Readonly<{ active: boolean; p
     <div className="stack">
       {data && !data.enabled && (
         <div className="banner warn" role="status">
-          Chaos nonaktif di pod ini. Set <code>ENABLE_CHAOS=true</code> dan <code>CHAOS_TOKEN</code> (Secret) di namespace tes.
+          <Rich text={t('chaos.off')} />
         </div>
       )}
       {data?.enabled && !data.tokenConfigured && (
         <div className="banner err" role="status">
-          <code>ENABLE_CHAOS=true</code> tetapi <code>CHAOS_TOKEN</code> belum di-set, semua aksi ditolak.
+          <Rich text={t('chaos.noToken')} />
         </div>
       )}
 
-      <section className="card stack" aria-labelledby="chaos-h-session">
-        <div>
-          <h2 id="chaos-h-session">Sesi chaos</h2>
-          <p className="sub">
-            Aksi memengaruhi <strong>satu pod acak</strong> di belakang Service. Isi target pod untuk menarget pod tertentu; pod lain membalas 409, jadi ulangi sampai kena.
-          </p>
-        </div>
-        <div className="row">
-          <label className="field-grow">
-            Chaos token
-            <input type="password" autoComplete="new-password" value={token} onChange={(e) => setToken(e.target.value)} aria-describedby="chaos-token-hint" />
-            <span className="hint" id="chaos-token-hint">
-              Hanya di memori browser, hilang saat halaman dimuat ulang.
-            </span>
-          </label>
-          <label className="field-grow">
-            Target pod (opsional)
-            <input
-              value={saved.pod}
-              onChange={(e) => setSaved({ pod: e.target.value })}
-              placeholder={data?.pod ?? podName ?? 'nama pod'}
-              autoComplete="off"
-              spellCheck={false}
-            />
-            <span className="hint">Nama pod ada di sidebar. Diingat di browser ini.</span>
-          </label>
-        </div>
-        <div className="form-actions">
-          <div className="chips" aria-label="Gangguan yang sedang aktif">
-            {effects.length === 0 && data && <span className="muted">Tidak ada gangguan aktif.</span>}
-            {effects.map((ef) => (
-              <span key={ef} className="pill warn">
-                {ef}
-              </span>
-            ))}
-          </div>
-          <span className="spacer" />
-          <button type="button" className="btn" disabled={blocked || nothingToRestore} onClick={() => void restoreAll()}>
-            {busy === 'restore' ? 'Memulihkan…' : 'Pulihkan semua'}
-          </button>
-        </div>
-        {why && <p className="hint">{why}</p>}
-        {results.restore && <ResultNote outcome={results.restore} raw={false} />}
-      </section>
-
-      <div className="cols top">
+      <div className="chaos-layout">
         <div className="stack">
-          <section className="card stack" aria-labelledby="chaos-h-cpu">
+          <section className="card stack" aria-labelledby="chaos-h-session">
             <div>
-              <h2 id="chaos-h-cpu">CPU</h2>
-              <p className="sub">Busy loop di worker thread; probe tetap hidup. Untuk HPA dan CPU throttling.</p>
+              <h2 id="chaos-h-session">{t('chaos.session')}</h2>
+              <p className="sub">
+                <Rich text={t('chaos.sessionSub')} />
+              </p>
             </div>
             <div className="row">
               <label className="field-grow">
-                Durasi (detik)
-                <input type="number" min={1} max={120} value={seconds} onChange={(e) => setSeconds(Number(e.target.value) || 1)} />
+                {t('chaos.token')}
+                <input type="password" autoComplete="new-password" value={token} onChange={(e) => setToken(e.target.value)} aria-describedby="chaos-token-hint" />
+                <span className="hint" id="chaos-token-hint">
+                  {t('chaos.tokenHint')}
+                </span>
               </label>
               <label className="field-grow">
-                Worker (1-4)
-                <input type="number" min={1} max={4} value={workers} onChange={(e) => setWorkers(Number(e.target.value) || 1)} />
+                {t('chaos.target')}
+                <input
+                  value={saved.pod}
+                  onChange={(e) => setSaved({ pod: e.target.value })}
+                  placeholder={data?.pod ?? podName ?? t('chaos.targetPh')}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <span className="hint">{t('chaos.targetHint')}</span>
               </label>
             </div>
-            <div className="form-actions">
-              <button
-                type="button"
-                className="btn"
-                disabled={blocked}
-                onClick={() => void fire('cpu', 'bakar CPU', 'POST', `/api/chaos/cpu?seconds=${seconds}&workers=${workers}`, `CPU dibakar ${workers} worker selama ${seconds} detik.`)}
-              >
-                {busy === 'cpu' ? 'Memulai…' : 'Bakar CPU'}
-              </button>
-            </div>
-            {results.cpu && <ResultNote outcome={results.cpu} raw={false} />}
-          </section>
-
-          <section className="card stack" aria-labelledby="chaos-h-probe">
-            <div>
-              <h2 id="chaos-h-probe">Probe</h2>
-              <p className="sub">Readiness: pod keluar dari Endpoints. Liveness: kubelet me-restart container.</p>
-            </div>
-            <div className="form-actions">
-              <button
-                type="button"
-                className="btn"
-                disabled={blocked}
-                onClick={() =>
-                  void fire('probe', ready ? 'matikan readiness' : 'pulihkan readiness', 'POST', '/api/chaos/notready', ready ? 'Readiness dimatikan: pod keluar dari Endpoints.' : 'Readiness dipulihkan.')
-                }
-              >
-                {ready ? 'Matikan readiness' : 'Pulihkan readiness'}
-              </button>
-              <button
-                type="button"
-                className="btn"
-                disabled={blocked}
-                onClick={() =>
-                  void fire('probe', healthy ? 'matikan liveness' : 'pulihkan liveness', 'POST', '/api/chaos/unhealthy', healthy ? 'Liveness dimatikan: kubelet akan me-restart container.' : 'Liveness dipulihkan.')
-                }
-              >
-                {healthy ? 'Matikan liveness' : 'Pulihkan liveness'}
-              </button>
-            </div>
-            {results.probe && <ResultNote outcome={results.probe} raw={false} />}
-          </section>
-        </div>
-
-        <div className="stack">
-          <section className="card stack" aria-labelledby="chaos-h-mem">
-            <div>
-              <h2 id="chaos-h-mem">Memori</h2>
-              <p className="sub">Tahan memori sampai melewati limit untuk memicu OOMKilled.</p>
-            </div>
-            <label>
-              Jumlah (MB)
-              <input type="number" min={1} max={512} value={mb} onChange={(e) => setMb(Number(e.target.value) || 1)} />
-            </label>
-            <div className="form-actions">
-              <button type="button" className="btn" disabled={blocked} onClick={() => void fire('mem', 'alokasi memori', 'POST', `/api/chaos/mem?mb=${mb}`, `${mb} MB ditahan.`)}>
-                {busy === 'mem' ? 'Mengalokasi…' : 'Alokasi'}
-              </button>
-              <button
-                type="button"
-                className="btn"
-                disabled={blocked || (data?.heldMb ?? 0) === 0}
-                onClick={() => void fire('mem', 'lepas memori', 'DELETE', '/api/chaos/mem', 'Memori dilepas.')}
-              >
-                Lepas
-              </button>
-            </div>
-            {results.mem && <ResultNote outcome={results.mem} raw={false} />}
-          </section>
-
-          <section className="card stack" aria-labelledby="chaos-h-crash">
-            <div>
-              <h2 id="chaos-h-crash">Crash</h2>
-              <p className="sub">Proses exit 1, untuk tes restart policy dan CrashLoopBackOff.</p>
-            </div>
-            {confirmCrash ? (
-              <div className="form-actions">
-                <button
-                  type="button"
-                  className="btn danger"
-                  disabled={blocked}
-                  onClick={() => {
-                    setConfirmCrash(false);
-                    void fire('crash', 'crash', 'POST', '/api/chaos/crash', 'Proses dimatikan; pod akan di-restart.');
-                  }}
-                >
-                  Ya, matikan pod {crashTarget}
-                </button>
-                <button type="button" className="btn" onClick={() => setConfirmCrash(false)}>
-                  Batal
-                </button>
-              </div>
-            ) : (
-              <div className="form-actions">
-                <button type="button" className="btn danger" disabled={blocked} onClick={() => setConfirmCrash(true)}>
-                  Crash proses…
-                </button>
-              </div>
+            {why && (
+              <p className="hint" role="status">
+                {t('chaos.disabledLine', { why })}
+              </p>
             )}
-            {results.crash && <ResultNote outcome={results.crash} raw={false} />}
+            <div className="form-actions">
+              <div className="chips" aria-label={t('chaos.activeAria')}>
+                {effects.length === 0 && data && <span className="muted">{t('chaos.none')}</span>}
+                {effects.map((ef) => (
+                  <span key={ef} className="pill warn">
+                    {ef}
+                  </span>
+                ))}
+              </div>
+              <span className="spacer" />
+              <button type="button" className="btn" disabled={blocked || nothingToRestore} onClick={() => void restoreAll()}>
+                {busy === 'restore' ? t('chaos.restoring') : t('chaos.restoreAll')}
+              </button>
+            </div>
+            {results.restore && <ResultNote outcome={results.restore} raw={false} />}
           </section>
+
+          <div className="cols top">
+            <div className="stack">
+              <section className="card stack" aria-labelledby="chaos-h-cpu">
+                <div>
+                  <h2 id="chaos-h-cpu">{t('chaos.cpu')}</h2>
+                  <p className="sub">{t('chaos.cpuSub')}</p>
+                </div>
+                <div className="row">
+                  <label className="field-grow">
+                    {t('chaos.duration')}
+                    <input type="number" min={1} max={120} value={seconds} onChange={(e) => setSeconds(Number(e.target.value) || 1)} />
+                  </label>
+                  <label className="field-grow">
+                    {t('chaos.workers')}
+                    <input type="number" min={1} max={4} value={workers} onChange={(e) => setWorkers(Number(e.target.value) || 1)} />
+                  </label>
+                </div>
+                <div className="form-actions">
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={blocked}
+                    onClick={() => void fire('cpu', t('chaos.l.cpu'), 'POST', `/api/chaos/cpu?seconds=${seconds}&workers=${workers}`, t(workers === 1 ? 'chaos.ok.cpu.1' : 'chaos.ok.cpu', { workers, seconds }))}
+                  >
+                    {busy === 'cpu' ? t('chaos.starting') : t('chaos.burn')}
+                  </button>
+                </div>
+                {results.cpu && <ResultNote outcome={results.cpu} raw={false} />}
+              </section>
+
+              <section className="card stack" aria-labelledby="chaos-h-probe">
+                <div>
+                  <h2 id="chaos-h-probe">{t('chaos.probe')}</h2>
+                  <p className="sub">{t('chaos.probeSub')}</p>
+                </div>
+                <div className="form-actions">
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={blocked}
+                    onClick={() =>
+                      void fire(
+                        'probe',
+                        ready ? t('chaos.l.readyOff') : t('chaos.l.readyOn'),
+                        'POST',
+                        '/api/chaos/notready',
+                        ready ? t('chaos.ok.readyOff') : t('chaos.ok.readyOn'),
+                      )
+                    }
+                  >
+                    {ready ? t('chaos.readyOff') : t('chaos.readyOn')}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={blocked}
+                    onClick={() =>
+                      void fire(
+                        'probe',
+                        healthy ? t('chaos.l.liveOff') : t('chaos.l.liveOn'),
+                        'POST',
+                        '/api/chaos/unhealthy',
+                        healthy ? t('chaos.ok.liveOff') : t('chaos.ok.liveOn'),
+                      )
+                    }
+                  >
+                    {healthy ? t('chaos.liveOff') : t('chaos.liveOn')}
+                  </button>
+                </div>
+                {results.probe && <ResultNote outcome={results.probe} raw={false} />}
+              </section>
+            </div>
+
+            <div className="stack">
+              <section className="card stack" aria-labelledby="chaos-h-mem">
+                <div>
+                  <h2 id="chaos-h-mem">{t('chaos.mem')}</h2>
+                  <p className="sub">{t('chaos.memSub')}</p>
+                </div>
+                <label>
+                  {t('chaos.amount')}
+                  <input type="number" min={1} max={512} value={mb} onChange={(e) => setMb(Number(e.target.value) || 1)} />
+                </label>
+                <div className="form-actions">
+                  <button type="button" className="btn" disabled={blocked} onClick={() => void fire('mem', t('chaos.l.alloc'), 'POST', `/api/chaos/mem?mb=${mb}`, t('chaos.ok.alloc', { mb }))}>
+                    {busy === 'mem' ? t('chaos.allocating') : t('chaos.allocate')}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={blocked || (data?.heldMb ?? 0) === 0}
+                    onClick={() => void fire('mem', t('chaos.l.release'), 'DELETE', '/api/chaos/mem', t('chaos.ok.release'))}
+                  >
+                    {t('chaos.release')}
+                  </button>
+                </div>
+                {results.mem && <ResultNote outcome={results.mem} raw={false} />}
+              </section>
+
+              <section className="card stack" aria-labelledby="chaos-h-crash">
+                <div>
+                  <h2 id="chaos-h-crash">{t('chaos.crash')}</h2>
+                  <p className="sub">{t('chaos.crashSub')}</p>
+                </div>
+                {confirmCrash ? (
+                  <div className="form-actions">
+                    <button
+                      type="button"
+                      className="btn danger"
+                      disabled={blocked}
+                      onClick={() => {
+                        setConfirmCrash(false);
+                        void fire('crash', t('chaos.l.crash'), 'POST', '/api/chaos/crash', t('chaos.ok.crash'));
+                      }}
+                    >
+                      {t('chaos.crashConfirm', { pod: crashTarget })}
+                    </button>
+                    <button type="button" className="btn" onClick={() => setConfirmCrash(false)}>
+                      {t('common.cancel')}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="form-actions">
+                    <button type="button" className="btn danger" disabled={blocked} onClick={() => setConfirmCrash(true)}>
+                      {t('chaos.crashBtn')}
+                    </button>
+                  </div>
+                )}
+                {results.crash && <ResultNote outcome={results.crash} raw={false} />}
+              </section>
+            </div>
+          </div>
         </div>
+
+        <aside className="chaos-side" aria-label={t('chaos.sideAria')}>
+          <Pulse samples={samples} status={status} rows={CHAOS_ROWS} variant="side" title={t('chaos.sideTitle')} />
+        </aside>
       </div>
     </div>
   );

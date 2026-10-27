@@ -26,6 +26,8 @@ export interface InfoData {
   healthy: boolean;
   draining: boolean;
   started: boolean;
+  time: string;
+  load: { cpuWorkers: number; heldMb: number };
   rssMb: number;
   dependency: { configured: boolean; ok: boolean | null; status?: number; error?: string };
   upstreamConfigured: boolean;

@@ -17,11 +17,20 @@ kubectl apply -f k8s/app.yaml
 Tes sub-path ingress (basePath bersifat build-time):
 `docker build --build-arg BASE_PATH=/playground -t devops-playground:1.0.0 .`
 
+## Bahasa (English / Indonesia)
+
+Seluruh antarmuka dan dokumentasi tersedia dalam **Inggris (bawaan)** dan **Indonesia**. Ganti lewat tombol **EN | ID** di dasar sidebar; pilihan disimpan di cookie `lang` (satu tahun), jadi halaman docs yang dirender server ikut berganti. `?lang=id` atau `?lang=en` di URL juga mengatur cookie itu (parameter dibuang dari URL setelahnya), berguna untuk tautan dan tangkapan layar. Cookie hanya berisi `en` atau `id`, tanpa data pengguna.
+
+- Teks antarmuka ada di `src/i18n/en/*.ts` dan `src/i18n/id/*.ts` (satu pasang per area). Kamus Indonesia bertipe `Record<MsgKey, string>`, jadi kunci yang kurang gagal saat `tsc`; `npm test` memeriksa kunci identik, `{placeholder}` sama, dan tidak ada kata Indonesia yang bocor di teks Inggris.
+- Data katalog dua bahasa ada di `src/components/dashboard/catalog-data.ts`.
+- Docs: halaman Indonesia di `src/docs/pages/`, padanan Inggris di `src/docs/en/` dengan **slug yang sama** (URL berlaku untuk kedua bahasa). `test/docs-i18n.test.ts` menjaga struktur kembar: urutan dan jenis blok, jumlah baris/kolom tabel, jumlah item daftar, jumlah `kode`/**tebal**, dan perintah (jumlah baris, `{{BASE}}`, path `/api/...`).
+- Konsekuensi: bahasa dibaca dari cookie di server, jadi halaman `/` dan `/docs` dirender per-request (bukan statis).
+
 ## Dokumentasi (`/docs`)
 
-Panduan pemakaian dan cara memeriksa hasilnya ada **di dalam app**: buka `/docs` (15 halaman, pencarian, kolom Base URL yang mengisi semua contoh `curl`, dan blok "Cara cek" berisi hasil yang diharapkan).
+Panduan pemakaian dan cara memeriksa hasilnya ada **di dalam app**: buka `/docs` (16 halaman, pencarian, kolom Base URL yang mengisi semua contoh `curl`, dan blok "Verifikasi" berisi hasil yang diharapkan).
 
-Menambah halaman baru: buat file di `src/docs/pages/` (objek `Doc` berisi blok `h`, `p`, `ul`, `code`, `table`, `note`, `check`), lalu daftarkan di `src/docs/index.ts`. `npm test` memvalidasi slug, tautan antar halaman, struktur tabel, **setiap endpoint `/api/...` yang disebut harus ada di kode**, dan setiap env di halaman Referensi harus dipakai di kode, sehingga docs tidak diam-diam menjadi basi.
+Menambah halaman baru: buat file di `src/docs/pages/` (objek `Doc` berisi blok `h`, `p`, `ul`, `code`, `table`, `note`, `check`) **dan padanan Inggrisnya di `src/docs/en/` dengan nama file dan slug yang sama**, lalu daftarkan di `src/docs/index.ts` (impor di kedua daftar). `npm test` memvalidasi slug, tautan antar halaman, struktur tabel, **setiap endpoint `/api/...` yang disebut harus ada di kode**, dan setiap env di halaman Referensi harus dipakai di kode, untuk kedua bahasa, sehingga docs tidak diam-diam menjadi basi.
 
 ## Dashboard
 

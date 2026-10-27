@@ -1,3 +1,4 @@
+import type { Translate } from '../../i18n/core';
 import { headingsOf } from '../../docs/headings';
 import type { Block } from '../../docs/types';
 import CodeBlock, { InlineCode } from './CodeBlock';
@@ -16,15 +17,13 @@ function Inline({ text }: Readonly<{ text: string }>) {
   );
 }
 
-const CALLOUT_LABEL = { info: 'Catatan', warn: 'Perhatian', ok: 'Tips' } as const;
-
-function BlockView({ block, headingId }: Readonly<{ block: Block; headingId?: string }>) {
+function BlockView({ block, headingId, t }: Readonly<{ block: Block; headingId?: string; t: Translate }>) {
   switch (block.t) {
     case 'h':
       return (
         <h2 className="doc-h" id={headingId}>
           {block.text}
-          <a className="anchor" href={`#${headingId}`} aria-label={`Tautan ke bagian ${block.text}`}>
+          <a className="anchor" href={`#${headingId}`} aria-label={t('docs.anchor', { title: block.text })}>
             #
           </a>
         </h2>
@@ -85,20 +84,20 @@ function BlockView({ block, headingId }: Readonly<{ block: Block; headingId?: st
     case 'note':
       return (
         <aside className={`callout ${block.kind}`} role="note">
-          <span className="callout-label">{CALLOUT_LABEL[block.kind]}</span>
+          <span className="callout-label">{t(`docs.callout.${block.kind}`)}</span>
           <Inline text={block.text} />
         </aside>
       );
     case 'check':
       return (
-        <section className="verify" aria-label={`Verifikasi: ${block.title}`}>
+        <section className="verify" aria-label={t('docs.verifyAria', { title: block.title })}>
           <div className="verify-head">
-            <span className="verify-label">Verifikasi</span>
+            <span className="verify-label">{t('docs.verify')}</span>
             <h3>{block.title}</h3>
           </div>
           <CodeBlock code={block.command} />
           <div className="expect">
-            <span className="expect-label">Hasil yang diharapkan</span>
+            <span className="expect-label">{t('docs.expect')}</span>
             <p>
               <Inline text={block.expect} />
             </p>
@@ -108,13 +107,13 @@ function BlockView({ block, headingId }: Readonly<{ block: Block; headingId?: st
   }
 }
 
-export default function DocBlocks({ blocks }: Readonly<{ blocks: Block[] }>) {
+export default function DocBlocks({ blocks, t }: Readonly<{ blocks: Block[]; t: Translate }>) {
   const ids = headingsOf(blocks).map((h) => h.id);
   let h = 0;
   return (
     <div className="prose">
       {blocks.map((block, i) => (
-        <BlockView key={i} block={block} headingId={block.t === 'h' ? ids[h++] : undefined} />
+        <BlockView key={i} block={block} headingId={block.t === 'h' ? ids[h++] : undefined} t={t} />
       ))}
     </div>
   );

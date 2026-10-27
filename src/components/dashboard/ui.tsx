@@ -1,14 +1,16 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
-import { fmtBytes, clip, type Outcome } from './outcome';
+import { useState } from 'react';
+import { useT } from '../../i18n/client';
 import { statusClass, type CallResult } from './api';
+import { clip, fmtBytes, prettyBody, statusLine, transcript, type Outcome } from './outcome';
 
 export function StatusBadge({ status }: Readonly<{ status: number }>) {
   return <span className={`badge ${statusClass(status)}`}>{status === 0 ? 'ERR' : status}</span>;
 }
 
-export function CopyButton({ text, label = 'Copy' }: Readonly<{ text: string | (() => string); label?: string }>) {
+export function CopyButton({ text, label }: Readonly<{ text: string | (() => string); label?: string }>) {
+  const t = useT();
   const [done, setDone] = useState(false);
   const onClick = async () => {
     try {
@@ -21,73 +23,75 @@ export function CopyButton({ text, label = 'Copy' }: Readonly<{ text: string | (
   };
   return (
     <button type="button" className="btn sm" onClick={onClick}>
-      {done ? 'Tersalin' : label}
+      {done ? t('common.copied') : (label ?? t('common.copy'))}
     </button>
   );
 }
 
 // Hasil sebuah aksi, satu baris ringkas di dekat tombolnya; respons mentah bisa dibuka.
 export function ResultNote({ outcome, raw = true }: Readonly<{ outcome: Outcome; raw?: boolean }>) {
+  const t = useT();
   return (
     <div className={`result-note ${outcome.tone === 'ok' ? 'ok' : 'err'}`} role="status" aria-live="polite">
       <div className="row">
         <strong>{outcome.text}</strong>
         <span className="spacer" />
         <span className="muted">
-          {outcome.label} · {outcome.res.ms} ms
+          {outcome.label}, {outcome.res.ms} ms
         </span>
         <StatusBadge status={outcome.res.status} />
       </div>
       {raw && (
         <details>
-          <summary>Respons mentah</summary>
-          <pre className="out">{outcome.res.body || outcome.res.error || '(kosong)'}</pre>
+          <summary>{t('res.raw')}</summary>
+          <pre className="out">{outcome.res.body || outcome.res.error || t('res.empty')}</pre>
         </details>
       )}
     </div>
   );
 }
 
-// Respons sebuah request: status, waktu, ukuran, header ringkas, dan body (dipotong agar halaman tetap ringan).
-export function ResponseView({ res, request }: Readonly<{ res: CallResult; request?: ReactNode }>) {
+// Respons sebuah request sebagai transkrip terminal: perintah, status, header, lalu body (dipotong agar halaman tetap ringan).
+export function ResponseView({ res, method, path }: Readonly<{ res: CallResult; method?: string; path?: string }>) {
+  const t = useT();
   const [all, setAll] = useState(false);
-  const shown = all ? { text: res.body, clipped: false } : clip(res.body);
+  const pretty = prettyBody(res.body);
+  const shown = all ? { text: pretty, clipped: false } : clip(pretty);
   const bytes = new TextEncoder().encode(res.body).length;
+  const failed = res.status === 0;
   return (
     <div className="response" role="status" aria-live="polite">
-      <div className="row">
-        <StatusBadge status={res.status} />
-        <span className="muted">
-          {res.ms} ms · {fmtBytes(bytes)}
-          {res.redirected ? ' · dialihkan' : ''}
+      <pre className="term" tabIndex={0} aria-label={t('res.aria')}>
+        {method && path && (
+          <span className="term-line term-cmd">
+            $ {method} {path}
+          </span>
+        )}
+        <span className={`term-line term-status ${statusClass(res.status)}`}>
+          {statusLine(res.status, t)}
+          <span className="term-meta">
+            {'  '}
+            {res.ms} ms{failed ? '' : `, ${fmtBytes(bytes)}`}
+            {res.redirected ? `, ${t('res.redirected')}` : ''}
+          </span>
         </span>
-        {request}
-        {res.error && <strong className="response-error">{res.error === 'aborted' ? 'Dibatalkan' : 'Tidak bisa menghubungi server aplikasi.'}</strong>}
+        {failed && <span className="term-line term-hdr">{res.error === 'aborted' ? t('res.aborted') : t('res.noServer.l')}</span>}
+        {res.headers.map(([k, v]) => (
+          <span key={k} className="term-line term-hdr">
+            {k}: {v}
+          </span>
+        ))}
+        {res.body && <span className="term-line term-gap" />}
+        {res.body && <span className="term-line term-body">{shown.text}</span>}
+      </pre>
+      <div className="row">
+        {shown.clipped && (
+          <button type="button" className="btn sm" onClick={() => setAll(true)}>
+            {t('res.showAll', { size: fmtBytes(bytes) })}
+          </button>
+        )}
+        <CopyButton label={t('res.copy')} text={() => transcript({ ...res, body: pretty }, t, method, path)} />
       </div>
-      {res.headers.length > 0 && (
-        <details>
-          <summary>Header respons ({res.headers.length})</summary>
-          <dl className="hdrs">
-            {res.headers.map(([k, v]) => (
-              <div key={k}>
-                <dt className="mono">{k}</dt>
-                <dd className="mono">{v}</dd>
-              </div>
-            ))}
-          </dl>
-        </details>
-      )}
-      {res.body && (
-        <>
-          <pre className="out">{shown.text}</pre>
-          {shown.clipped && (
-            <button type="button" className="btn sm" onClick={() => setAll(true)}>
-              Tampilkan semua ({fmtBytes(bytes)})
-            </button>
-          )}
-        </>
-      )}
-      {!res.body && !res.error && <p className="muted">Body kosong.</p>}
     </div>
   );
 }

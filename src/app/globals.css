@@ -4,22 +4,22 @@
    (hijau/kuning/merah) hanya dipakai untuk makna status.
    ========================================================= */
 :root {
-  --bg: #f9fbfc;
+  --bg: #eceef0;
   --surface: #ffffff;
-  --subtle: #f4f6f8;
-  --sunken: #ebedee;
-  --text: #131416;
+  --subtle: #f4f5f7;
+  --sunken: #e2e5e8;
+  --text: #14161a;
   --text-2: #3d4046;
   --muted: #5d5f60;
-  --line: #e8eaec;
-  --line-strong: #cdced1;
+  --line: #dfe2e6;
+  --line-strong: #c6cad0;
 
   --primary: #1d1f20;
   --on-primary: #ffffff;
 
-  --accent: #1b6c80;
-  --accent-hover: #145566;
-  --accent-soft: #e1eef2;
+  --accent: #2d5bd0;
+  --accent-hover: #2349a8;
+  --accent-soft: #e4ebfa;
   --on-accent: #ffffff;
 
   --ok: #1a7f45;
@@ -54,10 +54,10 @@
     --primary: #ecece6;
     --on-primary: #101211;
 
-    --accent: #6bc0d4;
-    --accent-hover: #8ad0e0;
-    --accent-soft: #14303a;
-    --on-accent: #06161b;
+    --accent: #86a5f7;
+    --accent-hover: #a5bdfa;
+    --accent-soft: #1a2644;
+    --on-accent: #071026;
 
     --ok: #5ccf8a;
     --ok-soft: #13281c;
@@ -84,10 +84,10 @@
   --primary: #ecece6;
   --on-primary: #101211;
 
-  --accent: #6bc0d4;
-  --accent-hover: #8ad0e0;
-  --accent-soft: #14303a;
-  --on-accent: #06161b;
+  --accent: #86a5f7;
+  --accent-hover: #a5bdfa;
+  --accent-soft: #1a2644;
+  --on-accent: #071026;
 
   --ok: #5ccf8a;
   --ok-soft: #13281c;
@@ -112,7 +112,6 @@
 }
 
 html {
-  scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
 }
 
@@ -280,6 +279,7 @@ textarea:hover {
   background: var(--surface);
   color: var(--text);
   font: inherit;
+  font-family: var(--sans);
   font-size: 14px;
   font-weight: 550;
   text-decoration: none;
@@ -291,7 +291,7 @@ textarea:hover {
   color: var(--text);
 }
 .btn:disabled {
-  opacity: 0.5;
+  opacity: 0.62;
   cursor: not-allowed;
 }
 .btn.primary {
@@ -419,8 +419,7 @@ textarea:hover {
   color: var(--text);
   font-size: 12px;
   font-weight: 650;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0;
 }
 .callout.info .callout-label {
   color: var(--info);
@@ -437,9 +436,9 @@ textarea:hover {
    ========================================================= */
 .card {
   padding: 18px;
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: var(--radius-lg);
-  background: var(--surface);
+  background: var(--subtle);
 }
 .card h2 {
   font-size: 16px;
@@ -587,10 +586,10 @@ pre.out {
   align-items: center;
   gap: 10px;
   min-width: 0;
-  padding: 9px 10px;
-  border: 1px solid var(--line);
+  padding: 6px 10px;
+  border: 0;
   border-radius: var(--radius-lg);
-  background: var(--surface);
+  background: none;
 }
 .dot {
   flex: none;
@@ -630,6 +629,13 @@ pre.out {
   flex-direction: column;
   gap: 2px;
   min-height: 0;
+  /* Menu yang lebih tinggi dari layar digulir sendiri; dasar sidebar (tema, bahasa) tetap menempel dan tidak ditimpa.
+     Padding dan margin negatif memberi ruang agar cincin fokus tidak terpotong. */
+  padding: 2px;
+  margin: -2px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 .nav-list {
   display: flex;
@@ -736,43 +742,6 @@ pre.out {
   color: var(--muted);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
-}
-
-.kpis {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-}
-.kpi {
-  min-width: 0;
-  padding: 14px 18px;
-  border-left: 1px solid var(--line);
-}
-.kpi:first-child {
-  border-left: 0;
-}
-.kpi dt {
-  color: var(--muted);
-  font-size: 13px;
-}
-.kpi dd {
-  margin: 2px 0 0;
-  overflow: hidden;
-  font-size: 24px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.3;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.kpi .unit {
-  margin-left: 4px;
-  color: var(--muted);
-  font-size: 14px;
-  font-weight: 400;
 }
 
 /* Loading: bar datar selebar nilainya, tanpa shimmer */
@@ -988,7 +957,6 @@ pre.out {
   font-weight: 400;
   text-decoration: none;
   opacity: 0;
-  transition: opacity 0.12s;
 }
 .doc-h:hover .anchor,
 .doc-h .anchor:focus-visible {
@@ -1084,10 +1052,9 @@ pre.out {
 .verify-label,
 .expect-label {
   color: var(--accent);
-  font-size: 11.5px;
+  font-size: 13px;
   font-weight: 650;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
+  letter-spacing: 0;
 }
 .verify h3 {
   font-size: 16px;
@@ -1113,10 +1080,9 @@ pre.out {
 .toc h2 {
   margin-bottom: 8px;
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: 13px;
   font-weight: 650;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
+  letter-spacing: 0;
 }
 .toc ul {
   margin: 0;
@@ -1196,10 +1162,9 @@ pre.out {
 .doc-group h2 {
   margin-bottom: 6px;
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: 13px;
   font-weight: 650;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
+  letter-spacing: 0;
 }
 .doc-list {
   margin: 0;
@@ -1408,15 +1373,6 @@ input:user-invalid {
 
 /* Ponsel */
 @media (max-width: 640px) {
-  .kpis {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .kpi:nth-child(3) {
-    border-left: 0;
-  }
-  .kpi:nth-child(n + 3) {
-    border-top: 1px solid var(--line);
-  }
   .btn,
   .btn.sm {
     min-height: 44px;
@@ -1431,80 +1387,12 @@ input:user-invalid {
 }
 
 /* Siklus pod: satu wadah, empat tahap */
-.lifecycle {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-}
-.stage {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-  padding: 16px 18px;
-  border-left: 1px solid var(--line);
-}
-.stage:first-child {
-  border-left: 0;
-}
-.stage-name {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  font-size: 15px;
-  font-weight: 650;
-}
-.stage-dot {
-  flex: none;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--line-strong);
-}
-.stage.ok .stage-dot {
-  background: var(--ok);
-}
-.stage.bad .stage-dot {
-  background: var(--err);
-}
-.stage.warn .stage-dot {
-  background: var(--warn);
-}
-.stage-note {
-  padding-left: 19px;
-  color: var(--muted);
-  font-size: 13px;
-}
-.stage.pending .stage-name {
-  color: var(--muted);
-}
-.stage.bad .stage-note {
-  color: var(--err);
-}
-.stage.warn .stage-note {
-  color: var(--warn);
-}
-
 .icon-btn {
   flex: none;
   min-width: 34px;
   padding: 0;
 }
 @media (max-width: 640px) {
-  .lifecycle {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .stage:nth-child(3) {
-    border-left: 0;
-  }
-  .stage:nth-child(n + 3) {
-    border-top: 1px solid var(--line);
-  }
   .icon-btn {
     min-width: 44px;
   }
@@ -1626,6 +1514,7 @@ input:user-invalid {
   background: var(--surface);
   color: var(--text-2);
   font: inherit;
+  font-family: var(--sans);
   font-size: 13px;
   font-weight: 550;
   cursor: pointer;
@@ -1645,7 +1534,7 @@ input:user-invalid {
   border: 1px solid var(--line);
   border-left-width: 3px;
   border-radius: var(--radius);
-  background: var(--subtle);
+  background: var(--surface);
   font-size: 14px;
 }
 .result-note.ok {
@@ -1683,41 +1572,6 @@ input:user-invalid {
 }
 .item-result {
   grid-column: 1 / -1;
-}
-.response {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--subtle);
-  font-size: 13px;
-}
-.response pre.out {
-  max-height: 280px;
-  background: var(--surface);
-}
-.response-error {
-  color: var(--err);
-}
-.hdrs {
-  display: grid;
-  gap: 4px;
-  margin: 8px 0 0;
-}
-.hdrs > div {
-  display: grid;
-  grid-template-columns: minmax(110px, 200px) minmax(0, 1fr);
-  gap: 12px;
-  font-size: 12px;
-}
-.hdrs dt {
-  color: var(--muted);
-}
-.hdrs dd {
-  margin: 0;
-  overflow-wrap: anywhere;
 }
 .grow-text {
   min-width: 0;
@@ -1767,6 +1621,7 @@ input:user-invalid {
   background: none;
   color: var(--text-2);
   font: inherit;
+  font-family: var(--sans);
   font-size: 13px;
   text-align: left;
   cursor: pointer;
@@ -1882,4 +1737,343 @@ fieldset.cols-set .row {
   .kv.stack-sm td:last-child {
     padding-top: 8px;
   }
+}
+
+/* =========================================================
+   Pita detak (elemen khas Ringkasan) dan bagian tanpa bingkai
+   ========================================================= */
+.pulse {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 24px 28px;
+  border-radius: var(--radius-lg);
+  background: var(--subtle);
+}
+.pulse-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 16px;
+}
+.pulse-state {
+  font-size: 30px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+.pulse-state.warn {
+  color: var(--warn);
+}
+.pulse-state.err {
+  color: var(--err);
+}
+.pulse-state.pending {
+  color: var(--muted);
+}
+.pulse-detail {
+  color: var(--text-2);
+  font-size: 15px;
+}
+.tape {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.tape-row,
+.tape-axis {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+.tape-label {
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 550;
+}
+.ticks {
+  display: flex;
+  gap: 2px;
+  height: 24px;
+  padding-right: 4px;
+  border-right: 2px solid var(--accent);
+}
+.tick {
+  flex: 1 1 0;
+  min-width: 1px;
+  border-radius: 2px;
+  background: var(--line-strong);
+}
+.tick.ok {
+  background: var(--ok);
+}
+.tick.bad {
+  background: var(--err);
+}
+.tick.warn {
+  background: var(--warn);
+}
+.tick.blank {
+  background: var(--sunken);
+  opacity: 0.55;
+}
+.axis-line {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 12px;
+}
+.pulse-events {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+.pulse-events li {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+.pulse-events time {
+  flex: none;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.pulse-events li.err span {
+  color: var(--err);
+}
+.pulse-events li.warn span {
+  color: var(--warn);
+}
+.pulse-empty {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* Bagian tanpa bingkai: judul, lalu daftar yang dipisah garis antar baris (garis hanya menandai batas baris) */
+.group h2 {
+  margin-bottom: 8px;
+  font-size: 15px;
+  font-weight: 650;
+}
+.group .dl {
+  border-top: 1px solid var(--line);
+}
+.group .dl-row {
+  padding: 10px 0;
+}
+.group-note {
+  max-width: 62ch;
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+@media (max-width: 640px) {
+  .pulse {
+    padding: 18px 16px;
+  }
+  .pulse-state {
+    font-size: 24px;
+  }
+  .tape-row,
+  .tape-axis {
+    grid-template-columns: 68px minmax(0, 1fr);
+    gap: 8px;
+  }
+  .ticks {
+    gap: 1px;
+  }
+}
+
+/* =========================================================
+   Transkrip terminal (hasil request) dan tata letak Fault injection
+   Terminal memakai palet sendiri yang sama di tema terang maupun gelap, seperti jendela terminal sungguhan.
+   ========================================================= */
+:root {
+  --term-bg: #0f1114;
+  --term-fg: #d9dde3;
+  --term-muted: #8d949d;
+  --term-ok: #6fd49a;
+  --term-err: #f28b82;
+  --term-warn: #e8b45a;
+}
+.response {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+pre.term {
+  max-height: 340px;
+  margin: 0;
+  padding: 12px 14px;
+  overflow: auto;
+  border-radius: var(--radius);
+  background: var(--term-bg);
+  color: var(--term-fg);
+  font: 12.5px/1.6 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.term-line {
+  display: block;
+}
+.term-cmd {
+  color: var(--term-muted);
+}
+.term-status {
+  font-weight: 700;
+}
+.term-status.s2 {
+  color: var(--term-ok);
+}
+.term-status.s3 {
+  color: var(--term-warn);
+}
+.term-status.s4,
+.term-status.s5,
+.term-status.s0 {
+  color: var(--term-err);
+}
+.term-meta {
+  color: var(--term-muted);
+  font-weight: 400;
+}
+.term-hdr {
+  color: var(--term-muted);
+}
+.term-gap {
+  height: 0.8em;
+}
+.response .btn {
+  align-self: flex-start;
+}
+
+.chaos-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 440px);
+  gap: 24px;
+  align-items: start;
+}
+.chaos-side {
+  position: sticky;
+  top: 16px;
+}
+.pulse.side {
+  gap: 16px;
+  padding: 20px;
+}
+.pulse.side .pulse-state {
+  font-size: 22px;
+}
+.pulse-title {
+  width: 100%;
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+.pulse.side .tape-row,
+.pulse.side .tape-axis {
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 10px;
+}
+.pulse.side .ticks {
+  height: 18px;
+  gap: 1px;
+}
+.tick.idle {
+  background: var(--line-strong);
+  opacity: 0.45;
+}
+
+@media (max-width: 1100px) {
+  .chaos-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .chaos-side {
+    position: static;
+    order: -1;
+  }
+}
+
+/* Tombol bahasa: dua pilihan berdampingan, yang aktif ditandai wadah penuh */
+.lang-toggle {
+  display: inline-flex;
+  min-height: 34px;
+  padding: 2px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.lang-opt {
+  min-width: 34px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.lang-opt:hover {
+  color: var(--text);
+}
+.lang-opt[aria-pressed='true'] {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+@media (max-width: 640px) {
+  .lang-toggle {
+    min-height: 44px;
+  }
+  .lang-opt {
+    min-width: 44px;
+  }
+}
+
+/* Fakta instance: versi, uptime, memori, Node. Ukuran besar dan warna penuh supaya terbaca sekilas. */
+.facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px 32px;
+  margin: 0;
+}
+.fact dt {
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 550;
+}
+.fact dd {
+  margin: 2px 0 0;
+  font-size: 22px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.fact .unit {
+  margin-left: 5px;
+  color: var(--text-2);
+  font-size: 15px;
+  font-weight: 550;
+}
+@media (max-width: 640px) {
+  .facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* URL menuju tampilan selain Ringkasan: jangan sempat tampilkan Ringkasan sebelum JavaScript siap. */
+html[data-view='catalog'] #panel-overview,
+html[data-view='chaos'] #panel-overview,
+html[data-view='database'] #panel-overview {
+  display: none;
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useT } from '../i18n/client';
 
 type Theme = 'light' | 'dark';
 
@@ -10,6 +11,7 @@ function systemTheme(): Theme {
 
 // Tema mengikuti sistem sampai pengguna memilih; pilihan disimpan di browser (bukan di server).
 export default function ThemeToggle() {
+  const t = useT();
   const [theme, setTheme] = useState<Theme | null>(null);
 
   useEffect(() => {
@@ -30,7 +32,7 @@ export default function ThemeToggle() {
 
   const dark = theme === 'dark';
   return (
-    <button type="button" className="btn sm icon-btn" onClick={toggle} aria-pressed={dark} aria-label="Tema gelap" title={dark ? 'Pakai tema terang' : 'Pakai tema gelap'}>
+    <button type="button" className="btn sm icon-btn" onClick={toggle} aria-pressed={dark} aria-label={t('theme.label')} title={dark ? t('theme.toLight') : t('theme.toDark')}>
       <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         {dark ? (
           <>

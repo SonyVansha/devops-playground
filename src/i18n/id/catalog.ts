@@ -1,0 +1,26 @@
+import type { catalog as en } from '../en/catalog.ts';
+
+export const catalog: Record<keyof typeof en, string> = {
+  'cat.search': 'Cari skenario atau endpoint',
+  'cat.ph': 'mis. cache, 503, jwt, canary  (tekan / untuk mencari)',
+  'cat.results': '{n} hasil',
+  'cat.results.1': '1 hasil',
+  'cat.filterAria': 'Filter kategori',
+  'cat.all': 'Semua',
+  'cat.empty': 'Tidak ada yang cocok dengan “{q}”. Hapus filter untuk melihat semuanya.',
+  'cat.scenarioSub': 'Atur lewat env di Deployment, lalu amati perilakunya di cluster atau pipeline.',
+  'cat.tableAria': 'Tabel skenario deploy',
+  'cat.col.scenario': 'Skenario',
+  'cat.col.env': 'Env',
+  'cat.col.expect': 'Yang diharapkan',
+  'cat.col.action': 'Aksi',
+  'cat.copyEnv': 'Salin env',
+  'cat.verify': 'Verifikasi:',
+  'cat.headers': 'Header request ({n})',
+  'cat.blocked': 'Browser mengabaikan header {names}. Untuk tes yang sebenarnya, pakai **Salin curl**.',
+  'cat.run': 'Jalankan',
+  'cat.copyCurl': 'Salin curl',
+  'cat.open': 'Buka',
+  'cat.fill': 'Isi {names} dulu.',
+  'cat.running': 'Menjalankan…',
+};

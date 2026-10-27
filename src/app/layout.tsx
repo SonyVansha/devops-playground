@@ -1,25 +1,34 @@
+import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
+import { I18nProvider } from '../i18n/client';
+import { messagesFor, translator } from '../i18n/index';
+import { getLang } from '../i18n/server';
 import './globals.css';
 
-export const metadata = {
-  title: 'DevOps Playground',
-  description: 'Workload dummy untuk menguji Kubernetes, ingress, API gateway, dan rollout',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = translator(await getLang());
+  return { title: t('meta.title'), description: t('meta.description') };
+}
 
-// Terapkan tema pilihan sebelum paint agar tidak berkedip. ?theme=light|dark juga diterima (berguna untuk tautan dan tangkapan layar).
-const THEME_SCRIPT = `(function(){try{var p=new URLSearchParams(location.search).get('theme');var t=(p==='light'||p==='dark')?p:localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}})()`;
+// Terapkan tema pilihan sebelum paint agar tidak berkedip. ?theme=light|dark dan ?lang=en|id juga diterima
+// (berguna untuk tautan dan tangkapan layar); ?lang menulis cookie lalu memuat ulang sekali tanpa parameter itu.
+const BOOT_SCRIPT = `(function(){try{var q=new URLSearchParams(location.search);var p=q.get('theme');var t=(p==='light'||p==='dark')?p:localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;var l=q.get('lang');if((l==='en'||l==='id')&&l!==document.documentElement.lang){document.cookie='lang='+l+';path=/;max-age=31536000;samesite=lax';q.delete('lang');var s=q.toString();location.replace(location.pathname+(s?'?'+s:'')+location.hash)}var h=location.hash.slice(1);if(h==='catalog'||h==='chaos'||h==='database')document.documentElement.dataset.view=h}catch(e){}})()`;
 
-export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
+  const lang = await getLang();
+  const t = translator(lang);
   return (
-    <html lang="id" suppressHydrationWarning>
+    <html lang={lang} suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: BOOT_SCRIPT }} />
       </head>
       <body>
         <a className="skip" href="#konten">
-          Lewati ke konten
+          {t('shell.skip')}
         </a>
-        <div id="konten">{children}</div>
+        <I18nProvider lang={lang} messages={messagesFor(lang, [])}>
+          <div id="konten">{children}</div>
+        </I18nProvider>
       </body>
     </html>
   );

@@ -1,4 +1,6 @@
-import type { CallResult } from './api';
+import type { Translate } from '../../i18n/core.ts';
+import type { MsgKey } from '../../i18n/en.ts';
+import type { CallResult } from './api.ts';
 
 export interface Outcome {
   tone: 'ok' | 'err';
@@ -14,22 +16,22 @@ export interface SummaryOptions {
   ok?: string;
 }
 
-// Pesan untuk kode error umum dari driver (server hanya mengirim kodenya, bukan pesan mentah).
-export const HINTS: Record<string, string> = {
-  ECONNREFUSED: 'Server menolak koneksi. Periksa host dan port.',
-  ENOTFOUND: 'Host tidak ditemukan. Periksa penulisan host.',
-  EAI_AGAIN: 'Host tidak ditemukan (DNS gagal). Periksa host dan koneksi internet server.',
-  ETIMEDOUT: 'Waktu habis. Periksa firewall atau daftar IP yang diizinkan di penyedia database.',
-  ECONNRESET: 'Koneksi diputus server. Periksa pengaturan SSL/akses database.',
-  '28P01': 'User atau password salah.',
-  '28000': 'User atau password salah.',
-  ER_ACCESS_DENIED_ERROR: 'User atau password salah.',
-  '3D000': 'Nama database tidak ditemukan.',
-  ER_BAD_DB_ERROR: 'Nama database tidak ditemukan.',
-  '42P07': 'Tabel sudah ada.',
-  ER_TABLE_EXISTS_ERROR: 'Tabel sudah ada.',
-  '42501': 'User tidak punya izin untuk aksi ini.',
-  ER_DBACCESS_DENIED_ERROR: 'User tidak punya izin untuk aksi ini.',
+// Kode error umum dari driver -> kunci pesan (server hanya mengirim kodenya, bukan pesan mentah).
+export const HINT_KEYS: Readonly<Record<string, MsgKey>> = {
+  ECONNREFUSED: 'hint.refused',
+  ENOTFOUND: 'hint.noHost',
+  EAI_AGAIN: 'hint.dns',
+  ETIMEDOUT: 'hint.timeout',
+  ECONNRESET: 'hint.reset',
+  '28P01': 'hint.badLogin',
+  '28000': 'hint.badLogin',
+  ER_ACCESS_DENIED_ERROR: 'hint.badLogin',
+  '3D000': 'hint.noDb',
+  ER_BAD_DB_ERROR: 'hint.noDb',
+  '42P07': 'hint.tableExists',
+  ER_TABLE_EXISTS_ERROR: 'hint.tableExists',
+  '42501': 'hint.noPermission',
+  ER_DBACCESS_DENIED_ERROR: 'hint.noPermission',
 };
 
 export function parseJson<T>(res: CallResult): T | null {
@@ -46,32 +48,32 @@ export function cell(value: unknown): string {
 }
 
 // Ringkasan hasil dalam bahasa manusia; respons mentah tetap tersedia di komponen yang menampilkannya.
-export function summarize(label: string, res: CallResult, opts: SummaryOptions = {}): Outcome {
+export function summarize(label: string, res: CallResult, t: Translate, opts: SummaryOptions = {}): Outcome {
   const body = parseJson<Record<string, unknown>>(res) ?? {};
   const err = typeof body.error === 'string' ? body.error : '';
   const make = (tone: Outcome['tone'], text: string): Outcome => ({ tone, text, label, res });
   const token = opts.token ?? 'Token';
 
-  if (res.status === 0) return make('err', 'Tidak bisa menghubungi server aplikasi.');
-  if (res.status === 401) return make('err', `${token} salah.`);
-  if (res.status === 403) return make('err', `Fitur nonaktif atau ${token} belum di-set di server.`);
-  if (res.status === 409) return make('err', 'Pod ini bukan target. Ulangi sampai kena pod yang dituju.');
+  if (res.status === 0) return make('err', t('res.noServer'));
+  if (res.status === 401) return make('err', t('res.tokenBad', { token }));
+  if (res.status === 403) return make('err', t('res.forbidden', { token }));
+  if (res.status === 409) return make('err', t('res.conflict'));
   if (res.status === 412) {
     const missing = Array.isArray(body.missing) ? (body.missing as string[]).join(', ') : '';
-    return make('err', `Koneksi belum lengkap${missing ? `: isi ${missing}` : ''}.`);
+    return make('err', missing ? t('res.incomplete.fill', { fields: missing }) : t('res.incomplete'));
   }
-  if (res.status === 413) return make('err', 'Data terlalu besar.');
-  if (res.status >= 400 && res.status < 500) return make('err', err || 'Permintaan tidak valid.');
-  if (res.status >= 500) return make('err', HINTS[err] ?? `Gagal (${err || res.status}).`);
+  if (res.status === 413) return make('err', t('res.tooLarge'));
+  if (res.status >= 400 && res.status < 500) return make('err', err || t('res.badRequest'));
+  if (res.status >= 500) return make('err', HINT_KEYS[err] ? t(HINT_KEYS[err]) : t('res.failed', { code: err || res.status }));
 
   if (body.connected === true) {
-    return make('ok', `Terhubung ke ${body.dialect === 'mysql' ? 'MySQL' : 'PostgreSQL'} ${cell(body.version)} dalam ${cell(body.ms)} ms.`);
+    return make('ok', t('res.connected', { db: body.dialect === 'mysql' ? 'MySQL' : 'PostgreSQL', version: cell(body.version), ms: cell(body.ms) }));
   }
-  if (typeof body.created === 'string') return make('ok', `Tabel ${body.created} siap dipakai.`);
-  if (body.inserted === 1) return make('ok', `1 baris ditambahkan ke ${cell(body.table)}.`);
-  if (Array.isArray(body.tables)) return make('ok', `${body.tables.length} tabel playground ditemukan.`);
-  if (Array.isArray(body.rows)) return make('ok', `${body.rows.length} baris ditampilkan.`);
-  return make('ok', opts.ok ?? 'Berhasil.');
+  if (typeof body.created === 'string') return make('ok', t('res.tableReady', { name: body.created }));
+  if (body.inserted === 1) return make('ok', t('res.inserted', { table: cell(body.table) }));
+  if (Array.isArray(body.tables)) return make('ok', t(body.tables.length === 1 ? 'res.tables.1' : 'res.tables', { n: body.tables.length }));
+  if (Array.isArray(body.rows)) return make('ok', t(body.rows.length === 1 ? 'res.rows.1' : 'res.rows', { n: body.rows.length }));
+  return make('ok', opts.ok ?? t('res.done'));
 }
 
 // Ukuran body yang ramah dibaca: 812 B, 3.4 KB, 1.2 MB.
@@ -89,4 +91,53 @@ export function clip(text: string, max = 4096): { text: string; clipped: boolean
 // Nilai placeholder seperti "<jwt>" atau "Bearer <token>" yang harus diisi pengguna sebelum request dijalankan.
 export function hasPlaceholder(value: string): boolean {
   return /<[^<>]+>/.test(value);
+}
+
+const REASONS: Record<number, string> = {
+  200: 'OK',
+  201: 'Created',
+  202: 'Accepted',
+  204: 'No Content',
+  301: 'Moved Permanently',
+  302: 'Found',
+  304: 'Not Modified',
+  400: 'Bad Request',
+  401: 'Unauthorized',
+  403: 'Forbidden',
+  404: 'Not Found',
+  405: 'Method Not Allowed',
+  409: 'Conflict',
+  413: 'Payload Too Large',
+  429: 'Too Many Requests',
+  500: 'Internal Server Error',
+  502: 'Bad Gateway',
+  503: 'Service Unavailable',
+  504: 'Gateway Timeout',
+};
+
+// "200 OK", "503 Service Unavailable" (nama status HTTP baku, sama di semua bahasa); status 0 = request tidak sampai ke server.
+export function statusLine(status: number, t: Translate): string {
+  if (status === 0) return t('res.noResponse');
+  return REASONS[status] ? `${status} ${REASONS[status]}` : String(status);
+}
+
+// Seluruh respons sebagai teks (untuk tombol salin): perintah, status, header, lalu body.
+export function transcript(res: CallResult, t: Translate, method?: string, path?: string): string {
+  const lines: string[] = [];
+  if (method && path) lines.push(`$ ${method} ${path}`);
+  lines.push(statusLine(res.status, t));
+  for (const [k, v] of res.headers) lines.push(`${k}: ${v}`);
+  if (res.body) lines.push('', res.body);
+  return lines.join('\n');
+}
+
+// Body JSON ditampilkan rapi (seperti "curl | jq"); selain JSON object/array dibiarkan apa adanya.
+export function prettyBody(body: string): string {
+  const trimmed = body.trim();
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return body;
+  try {
+    return JSON.stringify(JSON.parse(trimmed), null, 2);
+  } catch {
+    return body;
+  }
 }

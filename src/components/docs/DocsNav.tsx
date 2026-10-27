@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useMemo, useState } from 'react';
+import { useT } from '../../i18n/client';
 
 export interface NavGroup {
   name: string;
@@ -10,6 +11,7 @@ export interface NavGroup {
 }
 
 export default function DocsNav({ groups }: Readonly<{ groups: NavGroup[] }>) {
+  const t = useT();
   const pathname = usePathname() ?? '';
   const [query, setQuery] = useState('');
 
@@ -22,12 +24,12 @@ export default function DocsNav({ groups }: Readonly<{ groups: NavGroup[] }>) {
   }, [groups, query]);
 
   return (
-    <nav aria-label="Daftar dokumentasi" className="docs-nav">
+    <nav aria-label={t('docs.nav.aria')} className="docs-nav">
       <input
         type="search"
         className="nav-filter"
-        aria-label="Filter dokumen"
-        placeholder="Filter dokumen"
+        aria-label={t('docs.nav.filter')}
+        placeholder={t('docs.nav.filter')}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         autoComplete="off"
@@ -50,7 +52,7 @@ export default function DocsNav({ groups }: Readonly<{ groups: NavGroup[] }>) {
           </ul>
         </div>
       ))}
-      {shown.length === 0 && <p className="muted nav-empty">Tidak ada dokumen yang cocok dengan “{query}”.</p>}
+      {shown.length === 0 && <p className="muted nav-empty">{t('docs.nav.empty', { q: query })}</p>}
     </nav>
   );
 }

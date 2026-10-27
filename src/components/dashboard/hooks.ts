@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { call } from './api';
 
 interface PollState<T> {
@@ -10,8 +10,20 @@ interface PollState<T> {
   lastOkAt: number | null;
 }
 
-export function usePoll<T>(path: string, intervalMs: number, active: boolean) {
-  const [state, setState] = useState<PollState<T>>({ data: null, status: 0, updatedAt: null, lastOkAt: null });
+/** Keadaan awal yang sudah diketahui (mis. dirender server), supaya tidak ada tahap "memuat" dan request pertama bisa dilewati. */
+export interface PollInitial<T> {
+  data: T | null;
+  status?: number;
+  at: number;
+}
+
+export function usePoll<T>(path: string, intervalMs: number, active: boolean, initial?: PollInitial<T>) {
+  const [state, setState] = useState<PollState<T>>(() =>
+    initial
+      ? { data: initial.data, status: initial.status ?? 200, updatedAt: initial.at, lastOkAt: (initial.status ?? 200) === 200 ? initial.at : null }
+      : { data: null, status: 0, updatedAt: null, lastOkAt: null },
+  );
+  const skipFirst = useRef(Boolean(initial));
 
   const refresh = useCallback(async () => {
     const res = await call('GET', path);
@@ -33,7 +45,9 @@ export function usePoll<T>(path: string, intervalMs: number, active: boolean) {
 
   useEffect(() => {
     if (!active) return undefined;
-    void refresh();
+    // Dengan data awal, pembacaan pertama sudah ada: cukup mulai interval.
+    if (skipFirst.current) skipFirst.current = false;
+    else void refresh();
     const id = setInterval(() => {
       if (document.visibilityState === 'visible') void refresh();
     }, intervalMs);

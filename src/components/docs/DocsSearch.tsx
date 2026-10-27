@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useT } from '../../i18n/client';
 
 export interface SearchGroup {
   name: string;
@@ -9,6 +10,7 @@ export interface SearchGroup {
 }
 
 export default function DocsSearch({ groups }: Readonly<{ groups: SearchGroup[] }>) {
+  const t = useT();
   const [query, setQuery] = useState('');
   const input = useRef<HTMLInputElement>(null);
 
@@ -37,13 +39,13 @@ export default function DocsSearch({ groups }: Readonly<{ groups: SearchGroup[] 
   return (
     <div>
       <label className="docs-search">
-        Cari dokumentasi
+        {t('docs.search')}
         <input
           ref={input}
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="mis. canary, rate limit, readiness, jwt  (tekan / untuk mencari)"
+          placeholder={t('docs.searchPh')}
         />
       </label>
       <div aria-live="polite">
@@ -62,7 +64,7 @@ export default function DocsSearch({ groups }: Readonly<{ groups: SearchGroup[] 
             </ul>
           </section>
         ))}
-        {shown.length === 0 && <p className="muted doc-group">Tidak ada dokumen yang cocok dengan “{query}”.</p>}
+        {shown.length === 0 && <p className="muted doc-group">{t('docs.nav.empty', { q: query })}</p>}
       </div>
     </div>
   );

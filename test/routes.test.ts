@@ -39,6 +39,7 @@ test('info route exposes instance data', async () => {
   const body = await (await info(r('/api/info'), undefined)).json();
   assert.equal(body.ready, true);
   assert.equal(typeof body.rssMb, 'number');
+  assert.deepEqual(body.load, { cpuWorkers: 0, heldMb: 0 });
 });
 
 test('headers route redacts credentials', async () => {

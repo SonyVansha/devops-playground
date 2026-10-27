@@ -1,8 +1,13 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { useI18n } from '../../i18n/client';
+import Rich from '../Rich';
 import { fmtUptime, type InfoData } from './api';
+import type { Sample } from './history';
 import { usePoll } from './hooks';
+import Pulse from './Pulse';
+import { clock, describe } from './status';
 import { CopyButton } from './ui';
 
 // Nilai yang belum ada: bar abu-abu rata selebar nilainya, tanpa shimmer, supaya layout tidak bergeser saat data tiba.
@@ -21,17 +26,18 @@ function Row({ label, children, mono }: Readonly<{ label: string; children: Reac
 
 // Nilai yang sering disalin (nama pod, IP) diberi tombol salin di sampingnya.
 function Copyable({ text, children }: Readonly<{ text: string | null | undefined; children: ReactNode }>) {
+  const { t } = useI18n();
   return (
     <span className="row between">
       <span className="grow-text">{children}</span>
-      {text && <CopyButton text={text} label="Salin" />}
+      {text && <CopyButton text={text} label={t('common.copy')} />}
     </span>
   );
 }
 
-function Kpi({ label, children, unit }: Readonly<{ label: string; children: ReactNode; unit?: string }>) {
+function Fact({ label, children, unit }: Readonly<{ label: string; children: ReactNode; unit?: string }>) {
   return (
-    <div className="kpi">
+    <div className="fact">
       <dt>{label}</dt>
       <dd>
         {children}
@@ -41,13 +47,15 @@ function Kpi({ label, children, unit }: Readonly<{ label: string; children: Reac
   );
 }
 
-function ProbeRow({ name, path, active }: Readonly<{ name: string; path: string; active: boolean }>) {
-  const { status, updatedAt } = usePoll<unknown>(path, 5000, active);
+function ProbeRow({ name, path, active, seed }: Readonly<{ name: string; path: string; active: boolean; seed?: { status: number; at: number } }>) {
+  const { t } = useI18n();
+  // seed = status dari snapshot server saat halaman dirender, supaya tidak tampil "Memeriksa" sesaat.
+  const { status, updatedAt } = usePoll<unknown>(path, 5000, active, seed ? { data: null, status: seed.status, at: seed.at } : undefined);
   let cls = 'pill';
-  let text = 'Memeriksa';
+  let text = t('ov.probe.checking');
   if (updatedAt !== null) {
     cls = status === 200 ? 'pill ok' : 'pill err';
-    text = status === 200 ? 'Lolos' : `Gagal (${status || 'ERR'})`;
+    text = status === 200 ? t('ov.probe.pass') : t('ov.probe.fail', { code: status || 'ERR' });
   }
   return (
     <Row label={name}>
@@ -59,55 +67,14 @@ function ProbeRow({ name, path, active }: Readonly<{ name: string; path: string;
   );
 }
 
-type StageState = 'ok' | 'bad' | 'warn' | 'pending';
-
-interface Stage {
-  name: string;
-  state: StageState;
-  note: string;
-}
-
-// Siklus hidup pod, tahap demi tahap: elemen khas produk ini (workload yang memerankan rollout dan probe).
-function stagesOf(info: InfoData): Stage[] {
-  const serving = info.ready && !info.draining;
-  let traffic: Stage = { name: 'Traffic', state: 'pending', note: 'belum menerima' };
-  if (serving) traffic = { name: 'Traffic', state: 'ok', note: 'menerima request' };
-  else if (info.draining) traffic = { name: 'Traffic', state: 'warn', note: 'draining, tidak menerima baru' };
-  else if (info.started) traffic = { name: 'Traffic', state: 'bad', note: 'keluar dari Endpoints' };
-  return [
-    { name: 'Start', state: info.started ? 'ok' : 'pending', note: info.started ? 'startup selesai' : 'menunggu startup probe' },
-    { name: 'Liveness', state: info.healthy ? 'ok' : 'bad', note: info.healthy ? 'sehat' : 'gagal, akan di-restart' },
-    { name: 'Readiness', state: info.ready ? 'ok' : info.started ? 'bad' : 'pending', note: info.ready ? 'siap' : info.started ? 'belum siap' : 'menunggu' },
-    traffic,
-  ];
-}
-
-function Lifecycle({ info }: Readonly<{ info: InfoData | null }>) {
-  const stages: Stage[] = info
-    ? stagesOf(info)
-    : ['Start', 'Liveness', 'Readiness', 'Traffic'].map((name) => ({ name, state: 'pending', note: '' }));
-  return (
-    <ol className="lifecycle" aria-label="Siklus pod">
-      {stages.map((st) => (
-        <li key={st.name} className={`stage ${st.state}`}>
-          <span className="stage-name">
-            <span className="stage-dot" aria-hidden="true" />
-            {st.name}
-          </span>
-          <span className="stage-note">{info ? st.note : <Skel w={12} />}</span>
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-const BEHAVIOR_LABELS: ReadonlyArray<[keyof InfoData['behavior'], string, string]> = [
+// Satuan: kunci kamus untuk yang bergantung bahasa, teks langsung untuk yang tidak.
+const BEHAVIOR_LABELS: ReadonlyArray<[keyof InfoData['behavior'], string, 'unit.sec' | 'unit.perMin' | string]> = [
   ['bootFail', 'BOOT_FAIL', ''],
-  ['startupDelaySeconds', 'STARTUP_DELAY_SECONDS', 'dtk'],
-  ['crashAfterSeconds', 'CRASH_AFTER_SECONDS', 'dtk'],
+  ['startupDelaySeconds', 'STARTUP_DELAY_SECONDS', 'unit.sec'],
+  ['crashAfterSeconds', 'CRASH_AFTER_SECONDS', 'unit.sec'],
   ['errorRate', 'ERROR_RATE', '%'],
   ['latencyMs', 'LATENCY_MS', 'ms'],
-  ['leakMbPerMinute', 'LEAK_MB_PER_MINUTE', 'MB/menit'],
+  ['leakMbPerMinute', 'LEAK_MB_PER_MINUTE', 'unit.perMin'],
 ];
 
 interface OverviewProps {
@@ -115,106 +82,107 @@ interface OverviewProps {
   reachable: boolean;
   updatedAt: number | null;
   lastOkAt: number | null;
+  samples: readonly Sample[];
   onRetry: () => void;
   active: boolean;
 }
 
-export default function Overview({ info, reachable, updatedAt, lastOkAt, onRetry, active }: Readonly<OverviewProps>) {
+export default function Overview({ info, reachable, updatedAt, lastOkAt, samples, onRetry, active }: Readonly<OverviewProps>) {
+  const { t, locale } = useI18n();
+  const unitOf = (u: string) => (u === 'unit.sec' || u === 'unit.perMin' ? t(u) : u);
   const loading = !info;
   const dash = <span className="muted">—</span>;
   const val = (x: string | null | undefined, w = 12) => (loading ? <Skel w={w} /> : x ? x : dash);
-  const missing = (x: string | null | undefined, w = 12) =>
-    loading ? <Skel w={w} /> : x ? x : <span className="muted">tidak tersedia</span>;
+  const missing = (x: string | null | undefined, w = 12) => (loading ? <Skel w={w} /> : x ? x : <span className="muted">{t('ov.unavailable')}</span>);
   const lacksIdentity = info ? !info.namespace || !info.nodeName || !info.podIp : false;
   const dep = info?.dependency;
   const failed = updatedAt !== null && !reachable;
+  const snapshot = (ok: boolean) => (info && reachable ? { status: ok ? 200 : 503, at: Date.parse(info.time) } : undefined);
+  const anyBehavior = info ? BEHAVIOR_LABELS.some(([k]) => info.behavior[k] !== 0 && info.behavior[k] !== false) : false;
 
   return (
-    <div className="stack" style={{ gap: 24 }}>
+    <div className="stack" style={{ gap: 32 }}>
       {failed && (
         <div className="block-error" role="alert">
           <span>
-            Tidak bisa menghubungi <code>/api/info</code>.{' '}
-            {lastOkAt ? `Nilai di bawah adalah data terakhir yang berhasil (pukul ${new Date(lastOkAt).toLocaleTimeString('id-ID', { hour12: false })}).` : 'Belum ada data yang berhasil dimuat.'}
+            {t('ov.err.prefix')} <code>/api/info</code>.{' '}
+            {lastOkAt ? t('ov.err.last', { time: clock(lastOkAt, locale) }) : t('st.unreachable.none')}
           </span>
           <button type="button" className="btn sm" onClick={onRetry}>
-            Coba lagi
+            {t('ov.retry')}
           </button>
         </div>
       )}
 
-      <Lifecycle info={info} />
+      <Pulse samples={samples} status={describe(info, reachable, lastOkAt, t, locale)} />
 
-      <dl className="kpis" aria-label="Ringkasan instance">
-        <Kpi label="Versi">{loading ? <Skel w={7} /> : info.appVersion}</Kpi>
-        <Kpi label="Uptime">{loading ? <Skel w={7} /> : fmtUptime(info.uptimeSeconds)}</Kpi>
-        <Kpi label="Memori (RSS)" unit={loading ? undefined : 'MB'}>
+      <dl className="facts" aria-label={t('fact.aria')}>
+        <Fact label={t('fact.version')}>{loading ? <Skel w={7} /> : info.appVersion}</Fact>
+        <Fact label={t('fact.uptime')}>{loading ? <Skel w={7} /> : fmtUptime(info.uptimeSeconds)}</Fact>
+        <Fact label={t('fact.memory')} unit={loading ? undefined : t('fact.mb')}>
           {loading ? <Skel w={5} /> : info.rssMb}
-        </Kpi>
-        <Kpi label="Node.js">{loading ? <Skel w={8} /> : info.nodeVersion}</Kpi>
+        </Fact>
+        <Fact label={t('fact.node')}>{loading ? <Skel w={8} /> : info.nodeVersion}</Fact>
       </dl>
 
       <div className="cols">
-        <div className="stack">
-          <section className="panel" aria-labelledby="h-identitas">
-            <h2 id="h-identitas">Identitas workload</h2>
+        <div className="stack" style={{ gap: 32 }}>
+          <section className="group" aria-labelledby="h-identitas">
+            <h2 id="h-identitas">{t('ov.identity')}</h2>
             <dl className="dl">
-              <Row label="Pod" mono>
+              <Row label={t('ov.pod')} mono>
                 <Copyable text={info?.podName ?? info?.hostname}>{val(info?.podName ?? info?.hostname, 18)}</Copyable>
               </Row>
-              <Row label="Namespace">{missing(info?.namespace)}</Row>
-              <Row label="Node" mono={Boolean(info?.nodeName)}>
+              <Row label={t('ov.namespace')}>{missing(info?.namespace)}</Row>
+              <Row label={t('ov.node')} mono={Boolean(info?.nodeName)}>
                 {missing(info?.nodeName)}
               </Row>
-              <Row label="IP pod" mono={Boolean(info?.podIp)}>
+              <Row label={t('ov.podIp')} mono={Boolean(info?.podIp)}>
                 <Copyable text={info?.podIp}>{missing(info?.podIp, 14)}</Copyable>
               </Row>
             </dl>
             {lacksIdentity && (
-              <p className="panel-note">
-                “Tidak tersedia” berarti platform tidak menyuntikkan <code>POD_NAMESPACE</code>, <code>NODE_NAME</code>, atau <code>POD_IP</code>. Nama pod dan IP
-                diambil dari hostname dan antarmuka jaringan; nama node hanya bisa lewat downward API (lihat <code>k8s/app.yaml</code>).
+              <p className="group-note">
+                <Rich text={t('ov.note')} />
               </p>
             )}
           </section>
 
-          <section className="panel" aria-labelledby="h-probe">
-            <h2 id="h-probe">Probe</h2>
-            <dl className="dl">
-              <ProbeRow name="Liveness" path="/api/healthz" active={active} />
-              <ProbeRow name="Readiness" path="/api/readyz" active={active} />
-              <ProbeRow name="Startup" path="/api/startupz" active={active} />
-            </dl>
-          </section>
-        </div>
-
-        <div className="stack">
-          <section className="panel" aria-labelledby="h-dep">
-            <h2 id="h-dep">Dependency dan upstream</h2>
+          <section className="group" aria-labelledby="h-dep">
+            <h2 id="h-dep">{t('ov.dep')}</h2>
             <dl className="dl">
               <Row label="DEPENDENCY_URL">
                 {loading ? (
                   <Skel w={8} />
                 ) : dep?.configured ? (
-                  <span className={`pill ${dep.ok ? 'ok' : 'err'}`}>{dep.ok ? 'Sehat' : `Gagal (${dep.status ?? dep.error ?? 'ERR'})`}</span>
+                  <span className={`pill ${dep.ok ? 'ok' : 'err'}`}>{dep.ok ? t('ov.depOk') : t('ov.depFail', { code: dep.status ?? dep.error ?? 'ERR' })}</span>
                 ) : (
-                  <span className="muted">tidak diset</span>
+                  <span className="muted">{t('ov.notSet')}</span>
                 )}
               </Row>
-              <Row label="UPSTREAM_URL">
-                {loading ? <Skel w={10} /> : info.upstreamConfigured ? 'dikonfigurasi' : <span className="muted">tidak diset</span>}
-              </Row>
+              <Row label="UPSTREAM_URL">{loading ? <Skel w={10} /> : info.upstreamConfigured ? t('ov.configured') : <span className="muted">{t('ov.notSet')}</span>}</Row>
+            </dl>
+          </section>
+        </div>
+
+        <div className="stack" style={{ gap: 32 }}>
+          <section className="group" aria-labelledby="h-probe">
+            <h2 id="h-probe">{t('ov.probes')}</h2>
+            <dl className="dl">
+              <ProbeRow name={t('pulse.liveness')} path="/api/healthz" active={active} seed={snapshot(Boolean(info?.healthy))} />
+              <ProbeRow name={t('pulse.readiness')} path="/api/readyz" active={active} seed={snapshot(Boolean(info?.ready && !info.draining && info.dependency.ok !== false))} />
+              <ProbeRow name={t('ov.startup')} path="/api/startupz" active={active} seed={snapshot(Boolean(info?.started))} />
             </dl>
           </section>
 
-          <section className="panel" aria-labelledby="h-perilaku">
-            <h2 id="h-perilaku">Perilaku aktif (env Deployment)</h2>
+          <section className="group" aria-labelledby="h-perilaku">
+            <h2 id="h-perilaku">{t('ov.behavior')}</h2>
             <dl className="dl">
               {BEHAVIOR_LABELS.map(([key, name, unit]) => {
                 const value = info?.behavior[key];
                 const on = value !== undefined && value !== 0 && value !== false;
                 let shown: ReactNode = <Skel w={6} />;
-                if (value !== undefined) shown = typeof value === 'number' ? `${value} ${unit}`.trim() : String(value);
+                if (value !== undefined) shown = typeof value === 'number' ? `${value} ${unitOf(unit)}`.trim() : String(value);
                 return (
                   <Row key={key} label={name}>
                     {on ? <span className="pill warn">{shown}</span> : <span className="muted">{shown}</span>}
@@ -222,10 +190,10 @@ export default function Overview({ info, reachable, updatedAt, lastOkAt, onRetry
                 );
               })}
             </dl>
-            <p className="panel-note">
-              {info && !BEHAVIOR_LABELS.some(([k]) => info.behavior[k] !== 0 && info.behavior[k] !== false)
-                ? 'Semua nol: workload berjalan sehat. Ubah env di Deployment untuk memerankan skenario rollout.'
-                : 'Nilai selain nol berarti workload sengaja dibuat bermasalah untuk skenario uji.'}
+            <p className="group-note">
+              {info && !anyBehavior
+                ? t('ov.behaviorOk')
+                : t('ov.behaviorOn')}
             </p>
           </section>
         </div>
